@@ -105,6 +105,7 @@ npm run dist   # output in ./dist
 | Tab / Esc | — | next region / exit edit |
 
 The full manual, written in Indonesian, is in [`docs/HVFT_VISION_Deskripsi_Manual.pdf`](docs/HVFT_VISION_Deskripsi_Manual.pdf).
+What's new: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Project layout
 
