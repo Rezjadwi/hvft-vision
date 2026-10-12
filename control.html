@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>HVFT VISION</title>
+<link rel="stylesheet" href="hud_fonts.css">
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root { --orange:#F2A03D; --bg:#0A0A0A; --panel:#0D0D0D; --line:#262626; --txt:#E8E8E8; --dim:#8A8A8A; --dim2:#6E6E6E;
+    --disp:'Orbitron','Audiowide',ui-monospace,Menlo,monospace; --mono:'JetBrains Mono',ui-monospace,Menlo,monospace; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--txt); font:12px/1.35 var(--mono); overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased; }
+  body { min-width:1500px; display:grid; grid-template-rows:88px minmax(0,1fr) 96px; gap:10px; padding:10px 12px 12px;
+    background-color:#0A0A0A; background-image:linear-gradient(rgba(255,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.028) 1px,transparent 1px); background-size:32px 32px; }
+  body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:200; opacity:.06;
+    background:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  @keyframes hvspin { to { transform:rotate(360deg) } }
+  @keyframes hvglow { from { box-shadow:0 0 0 rgba(242,160,61,0) } to { box-shadow:0 0 12px rgba(242,160,61,.9) } }
+
+  button { font:inherit; color:inherit; background:#141414; border:1px solid #2E2E2E; border-radius:0; padding:6px 10px; cursor:pointer; white-space:nowrap;
+    clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px); }
+  button:hover { filter:brightness(1.25); }
+  button.on { background:var(--orange); color:#0A0A0A; border-color:var(--orange); font-weight:700; }
+  select, textarea, input[type=text], input[type=password], input[type=number] { font:11px var(--mono); color:#E8E8E8; background:#121212; border:1px solid #2E2E2E; border-radius:0; padding:6px 8px; width:100%; }
+  input[type=range] { width:100%; accent-color:var(--orange); }
+
+  /* ---------- chamfered frame (1px border via outer/inner clip) ---------- */
+  .frame { --n:16px; position:relative; background:#2A2A2A; padding:1px; min-width:0; min-height:0; display:flex;
+    clip-path:polygon(var(--n) 0,100% 0,100% calc(100% - var(--n)),calc(100% - var(--n)) 100%,0 100%,0 var(--n)); }
+  .frame > .fin { flex:1 1 auto; min-width:0; min-height:0; display:flex; flex-direction:column; background:#0D0D0D; position:relative;
+    clip-path:polygon(calc(var(--n) - .5px) 0,100% 0,100% calc(100% - var(--n) + .5px),calc(100% - var(--n) + .5px) 100%,0 100%,0 calc(var(--n) - .5px)); }
+  .htab { flex:0 0 30px; height:30px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #1C1C1C; padding-right:12px; min-width:0; }
+  .htab .tab { height:100%; display:flex; align-items:center; padding:0 26px 0 18px; background:#181818; clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%);
+    font:700 11px var(--disp); letter-spacing:.2em; color:#E8E8E8; white-space:nowrap; }
+  .htab .hsub { font:500 9px var(--mono); letter-spacing:.14em; color:#6E6E6E; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .htab .hsp { flex:1 1 auto; }
+  #outRes { position:absolute; right:8px; top:6px; z-index:6; font:700 9px var(--mono); letter-spacing:.12em; color:#F2A03D; background:#0A0A0Acc; padding:3px 6px; pointer-events:none; white-space:nowrap; }
+  .laybtns { display:flex; align-items:center; gap:3px; flex:0 0 auto; }
+  .laybtns i { font:700 8.5px var(--mono); font-style:normal; letter-spacing:.14em; color:#6E6E6E; margin-right:2px; }
+  .laybtns button { height:20px; padding:0 7px; font:700 9px var(--mono); letter-spacing:.08em; background:#111; color:#9a9a9a; border:1px solid #333; cursor:pointer; }
+  .laybtns button:hover { color:#E8E8E8; border-color:#666; }
+  .laybtns button.on { background:var(--orange); color:#0A0A0A; border-color:var(--orange); }
+  .chip { font:700 9px var(--mono); letter-spacing:.14em; padding:3px 8px; background:#1A1A1A; color:#8A8A8A; white-space:nowrap; }
+  .chip.live { background:var(--orange); color:#0A0A0A; }
+
+  /* ================= TOP TRANSPORT ================= */
+  #topbar > .fin { flex-direction:row; align-items:center; gap:12px; padding:0 14px 0 20px; }
+  .tsep { width:1px; align-self:stretch; margin:14px 0; background:#262626; flex:0 0 auto; }
+  .tsp { flex:1 1 auto; min-width:8px; }
+  .tg { display:flex; align-items:center; gap:10px; flex:0 0 auto; }
+  .tst { display:flex; flex-direction:column; gap:4px; }
+  .tl { font:700 11px var(--disp); letter-spacing:.16em; color:#E8E8E8; white-space:nowrap; line-height:1.3; }
+  .ts { font:500 9px var(--mono); letter-spacing:.12em; color:#6E6E6E; white-space:nowrap; }
+  #brand { display:flex; flex-direction:column; gap:3px; }
+  #brand .bh { font:900 34px/1 var(--disp); letter-spacing:.04em; transform:skewX(-12deg); color:#F2F2F2; }
+  #brand .bv { font:700 11px var(--disp); letter-spacing:.62em; color:#9A9A9A; padding-left:2px; }
+  .serial { display:flex; flex-direction:column; gap:4px; padding-left:12px; border-left:1px solid #262626; }
+  .serial b { font:900 13px var(--disp); letter-spacing:.1em; color:#E8E8E8; }
+  .serial span { font:500 9px var(--mono); letter-spacing:.12em; color:#6E6E6E; }
+  .barcode { width:52px; height:9px; background:repeating-linear-gradient(90deg,#7A7A7A 0 1px,transparent 1px 3px,#7A7A7A 3px 5px,transparent 5px 6px,#7A7A7A 6px 7px,transparent 7px 10px); }
+  #micStat { font:500 10px var(--mono); letter-spacing:.12em; color:#8A8A8A; }
+  #micStat.on { color:var(--orange); }
+  #mic { position:relative; width:130px; height:52px; padding:0; font-size:0; color:transparent; border:1px solid #3A3A3A;
+    background:repeating-linear-gradient(-45deg,#1A1A1A 0 7px,#0F0F0F 7px 14px); clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px); }
+  #mic::before { content:'SAFE'; position:absolute; top:5px; bottom:5px; left:5px; width:60px; display:flex; align-items:center; justify-content:center;
+    font:900 11.5px var(--disp); letter-spacing:.1em; color:#8A8A8A; background:#2E2E2E; transition:left .14s ease;
+    clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px); }
+  #mic::after { content:'NO SIG'; position:absolute; top:0; bottom:0; right:9px; display:flex; align-items:center; font:500 9px var(--mono); letter-spacing:.14em; color:#8A8A8A; }
+  #mic.armed { border-color:var(--orange); background:rgba(242,160,61,.1); }
+  #mic.armed::before { content:'ARMED'; left:calc(100% - 65px); background:var(--orange); color:#0A0A0A; box-shadow:0 0 18px rgba(242,160,61,.8); }
+  #mic.armed::after { content:'◉ LIVE'; right:auto; left:8px; color:var(--orange); }
+  .tmeters { display:grid; grid-template-columns:repeat(3,8px); grid-template-rows:32px auto; column-gap:3px; row-gap:3px; }
+  .tmeters i { position:relative; background:#1A1A1A; display:block; }
+  .tmeters i s { position:absolute; left:0; right:0; bottom:0; height:0; background:#4A4A4A; }
+  .tmeters em { font:500 9px var(--mono); color:#8A8A8A; text-align:center; font-style:normal; line-height:1; }
+  .led { display:inline-block; width:8px; height:8px; background:#2A2A2A; }
+  .led.on { background:#F2F2F2; box-shadow:0 0 10px #fff; }
+  .bpmv { font:700 32px/1 var(--mono); letter-spacing:-.02em; color:#F2F2F2; }
+  #tapBtn { width:62px; height:52px; font:900 13px var(--disp); letter-spacing:.16em; border-color:#3A3A3A; clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+  #tapBtn:active { background:var(--orange); color:#0A0A0A; }
+  .tfade { display:flex; gap:4px; }
+  .tfade button { font:700 8.5px var(--mono); letter-spacing:.1em; padding:3px 6px; }
+  #mBlack { position:relative; width:112px; height:52px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+    font:900 12px var(--disp); letter-spacing:.14em; color:#E8E8E8; border:1px solid #4A4A4A;
+    background:repeating-linear-gradient(-45deg,#1A1A1A 0 7px,#0F0F0F 7px 14px); clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+  #mBlack::after { content:'[B] · DANGER'; font:500 9px var(--mono); letter-spacing:.14em; }
+  #mBlack.on { background:var(--orange); color:#0A0A0A; border-color:var(--orange); }
+  #mBlack.on::after { content:'■ OUTPUT KILLED'; }
+  .telem { display:grid; grid-template-columns:auto auto; column-gap:16px; row-gap:3px; padding:0 12px; border-left:1px solid #262626; border-right:1px solid #262626; flex:0 0 auto; }
+  .telem > div { display:flex; align-items:baseline; gap:8px; }
+  .telem span { font:500 9px var(--mono); letter-spacing:.16em; color:#6E6E6E; width:28px; }
+  .telem b { font:700 14px var(--mono); color:#E8E8E8; }
+  .telem b.acc { color:var(--orange); }
+  .telem #status { grid-column:1 / -1; font:500 9px var(--mono); letter-spacing:.06em; color:#8A8A8A; max-width:230px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #gear { height:52px; padding:0 14px; font:900 11px var(--disp); letter-spacing:.14em; border-color:#3A3A3A; clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px); }
+  #mapmon { height:52px; padding:0 16px 0 14px; display:flex; align-items:center; gap:10px; font:900 15px var(--disp); letter-spacing:.16em; background:#E8E8E8; color:#0A0A0A; border-color:#E8E8E8;
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px); }
+  #mapmon:hover { background:var(--orange); border-color:var(--orange); filter:none; }
+
+  /* ================= MAIN ================= */
+  #mainrow { display:grid; grid-template-columns:var(--wL,540px) 10px var(--wC,400px) 10px minmax(0,1fr); min-height:0; }
+  #colL { display:grid; grid-template-rows:var(--hMix,380px) 10px minmax(0,1fr) 10px var(--hAud,128px); min-height:0; min-width:0; }
+  #colL > .frame { min-height:0; }
+  .vgut, .hgut { position:relative; user-select:none; touch-action:none; }
+  .vgut { cursor:col-resize; }
+  .hgut { cursor:row-resize; }
+  .vgut::after { content:''; position:absolute; top:30%; bottom:30%; left:4px; width:2px; background:#262626; transition:background .12s; }
+  .hgut::after { content:''; position:absolute; left:30%; right:30%; top:4px; height:2px; background:#262626; transition:background .12s; }
+  .vgut:hover::after, .vgut.drag::after, .hgut:hover::after, .hgut.drag::after { background:var(--orange); top:0; bottom:0; left:4px; }
+  .hgut:hover::after, .hgut.drag::after { left:0; right:0; top:4px; bottom:auto; }
+  body.resizing, body.resizing * { cursor:inherit !important; user-select:none !important; }
+
+  /* PROGRAM */
+  #pgmF .pbody { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; padding:8px; }
+  .mapbar { display:none; flex:0 0 auto; align-items:center; gap:4px; padding:6px 8px; border-bottom:1px solid #3a2a14; background:#110D08; flex-wrap:wrap; }
+  body.mapedit .mapbar { display:flex; }
+  .mapbar .mt { font:900 10px var(--disp); letter-spacing:.14em; color:var(--orange); }
+  .mapbar .mi { font:700 9px var(--mono); letter-spacing:.1em; color:#E8E8E8; margin-right:6px; }
+  .mapbar .mh { width:100%; font:500 8.5px var(--mono); letter-spacing:.12em; color:#8A8A8A; }
+  .mapbar button { height:24px; padding:0 8px; font:700 9px var(--mono); letter-spacing:.08em; }
+  .mapbar button.go { background:var(--orange); color:#0A0A0A; border-color:var(--orange); }
+  body.mapedit #stage { border-color:var(--orange); }
+  #mapmon.on { background:var(--orange); border-color:var(--orange); }
+  #stage { position:relative; width:100%; aspect-ratio:16/9; background:#000; border:1px solid #2A2A2A; overflow:hidden; flex:0 0 auto; }
+  #stage.live { border-color:var(--orange); box-shadow:0 0 18px rgba(242,160,61,.35); }
+  #view { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #deckcv { position:absolute; inset:0; width:100%; height:100%; z-index:3; background:#000; display:block; }
+  .pov { position:absolute; inset:0; z-index:5; pointer-events:none; }
+  .pov::before { content:''; position:absolute; inset:0; background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 1px,transparent 1px 3px); }
+  .pov .br { position:absolute; width:16px; height:16px; border-color:rgba(242,242,242,.85); border-style:solid; border-width:0; }
+  .pov .tl { left:8px; top:8px; border-left-width:2px; border-top-width:2px; }
+  .pov .tr { right:8px; top:8px; border-right-width:2px; border-top-width:2px; }
+  .pov .bl { left:8px; bottom:8px; border-left-width:2px; border-bottom-width:2px; }
+  .pov .bR { right:8px; bottom:8px; border-right-width:2px; border-bottom-width:2px; }
+  .pov svg { position:absolute; left:50%; top:50%; width:34px; height:34px; margin:-17px 0 0 -17px; opacity:.55; }
+  #pgmInfo { position:absolute; left:30px; bottom:9px; font:500 9px var(--mono); letter-spacing:.14em; color:#E8E8E8; text-shadow:0 0 4px #000; }
+  #pgmBlack { position:absolute; inset:0; z-index:6; display:none; align-items:center; justify-content:center; background:#000; font:900 18px var(--disp); letter-spacing:.2em; color:var(--orange); }
+  #pgmBlack.on { display:flex; }
+  #rec { font:700 9px var(--mono); letter-spacing:.14em; padding:3px 8px; background:#1A1A1A; color:#E8E8E8; border-color:#3A3A3A; }
+  #rec.active { background:#E13B3B; color:#fff; border-color:#E13B3B; }
+  #drop { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:#000000cc; border:2px dashed var(--orange); color:var(--orange); z-index:9; font:700 14px var(--disp); letter-spacing:.16em; }
+  #drop.show { display:flex; }
+
+  /* CH PREVIEW (4 channels) */
+  #layerprev { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:8px; padding:8px; }
+  .pvc { position:relative; min-height:0; min-width:0; border:1px solid #2A2A2A; cursor:pointer; overflow:hidden;
+    background-color:#141414; background-image:linear-gradient(45deg,#1E1E1E 25%,transparent 25%,transparent 75%,#1E1E1E 75%),linear-gradient(45deg,#1E1E1E 25%,transparent 25%,transparent 75%,#1E1E1E 75%); background-size:12px 12px; background-position:0 0,6px 6px; }
+  .pvc canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  .pvc .pvl { position:absolute; left:0; top:0; padding:3px 7px; font:700 9px var(--mono); letter-spacing:.12em; color:#0A0A0A; background:#E8E8E8; clip-path:polygon(0 0,100% 0,calc(100% - 6px) 100%,0 100%); }
+  .pvc .pvs { position:absolute; left:6px; bottom:4px; font:500 8.5px var(--mono); letter-spacing:.1em; color:#8A8A8A; text-shadow:0 0 3px #000; }
+  .pvc .pvs.live { color:var(--orange); }
+  .pvc.sel { border-color:var(--orange); box-shadow:inset 0 0 0 1px var(--orange); }
+  .pvc.sel .pvl { background:var(--orange); }
+  .pvc.off canvas { opacity:.35; }
+  /* AUDIO IN */
+  #audioin { min-height:0; }
+  #audioin.armed { background:rgba(242,160,61,.55); }
+  #audioin .abody { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:4px; padding:6px 10px; overflow:hidden; }
+  #meters { position:relative; display:flex; flex-direction:column; gap:3px; flex:1 1 auto; justify-content:space-evenly; min-height:0; }
+  .mrow { display:grid; grid-template-columns:20px minmax(0,1fr) 56px; align-items:center; gap:8px; }
+  .mbig { font:900 15px/1 var(--disp); color:#E8E8E8; }
+  .mname { font:500 8px var(--mono); letter-spacing:.12em; color:#8A8A8A; margin-bottom:1px; display:flex; justify-content:space-between; }
+  .mlk { color:var(--orange); }
+  .mseg { width:100%; height:10px; display:block; }
+  .mdb { font:700 10.5px var(--mono); color:#E8E8E8; text-align:right; }
+  #nosig { position:absolute; inset:-4px; display:none; flex-direction:column; align-items:center; justify-content:center; gap:4px; background:rgba(13,13,13,.86); border:1px dashed #3A3A3A; }
+  #nosig b { font:900 11px var(--disp); letter-spacing:.2em; color:#8A8A8A; }
+  #nosig span { font:500 9px var(--mono); letter-spacing:.14em; color:#6E6E6E; }
+  #audioin.disarmed #nosig { display:flex; }
+  #ainrow { flex:1 1 auto; min-width:0; display:grid; grid-template-columns:minmax(0,1fr) 70px 62px; gap:3px; margin-left:8px; align-self:center; }
+  #ainrow select { padding:1px 3px; height:18px; font-size:9px; letter-spacing:.04em; }
+  .specw { position:relative; flex:0 0 auto; }
+  #ainInfo { position:absolute; right:3px; bottom:2px; max-width:calc(100% - 6px); padding:0 4px; line-height:11px; background:rgba(10,10,10,.72); pointer-events:none;
+    font:500 8px var(--mono); letter-spacing:.12em; color:#6E6E6E; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #ainInfo.live { color:var(--orange); }
+  #ainInfo.warn { color:#FF5A3D; }
+  #spec { width:100%; height:22px; display:block; background:#0A0A0A; border:1px solid #1E1E1E; flex:0 0 auto; }
+  #specinfo { display:none; }
+
+  /* CHANNEL STACK */
+  #chanF .gfeat { display:flex; align-items:center; gap:4px; }
+  #chanF .gfeat b { font:500 9px var(--mono); letter-spacing:.14em; color:#6E6E6E; margin-right:2px; }
+  .gf { font:700 8.5px var(--mono); letter-spacing:.08em; padding:3px 7px; }
+  #decktools { display:none; }
+  #deckbar { flex:1 1 auto; min-height:0; padding:8px; }
+  .chans { height:100%; display:grid; grid-template-rows:repeat(4,minmax(0,1fr)); gap:8px; }
+  .chanW { min-height:0; display:flex; }
+  .chanW.sel { filter:drop-shadow(0 0 10px rgba(242,160,61,.35)); }
+  .chan { --n:16px; flex:1 1 auto; cursor:pointer; }
+  .chan.sel { background:var(--orange); }
+  .chan > .fin { padding:10px 12px 10px 14px; gap:6px; }
+  .chan.sel > .fin { background:#110D08; }
+  .chan.sel > .fin::before, .chan.sel > .fin::after { content:''; position:absolute; width:12px; height:12px; border-color:var(--orange); border-style:solid; border-width:0; }
+  .chan.sel > .fin::before { right:6px; top:6px; border-top-width:2px; border-right-width:2px; }
+  .chan.sel > .fin::after { left:6px; bottom:6px; border-bottom-width:2px; border-left-width:2px; }
+  .chan.off > .fin { opacity:.72; }
+  .cRow1 { display:flex; align-items:center; gap:10px; min-width:0; }
+  .ctag { font:700 11px var(--disp); letter-spacing:.1em; padding:5px 12px 5px 9px; background:#262626; color:#CFCFCF; clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%); flex:0 0 auto; }
+  .chan.aud .ctag { background:#E8E8E8; color:#0A0A0A; }
+  .chan.sel .ctag { background:var(--orange); color:#0A0A0A; }
+  .cname { font:700 13px var(--disp); letter-spacing:.06em; color:#F2F2F2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .clock { font:500 9px var(--mono); letter-spacing:.14em; color:var(--orange); white-space:nowrap; }
+  .creg { margin-left:auto; font:500 9px var(--mono); letter-spacing:.12em; color:#6E6E6E; }
+  .chan .ctog { position:relative; flex:0 0 64px; width:64px; height:26px; padding:0; background:#141414; border:1px solid #3A3A3A; clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px); }
+  .chan .ctog i { position:absolute; top:3px; bottom:3px; left:3px; width:26px; background:#2E2E2E; transition:left .14s ease; }
+  .chan .ctog span { position:absolute; right:7px; top:0; bottom:0; display:flex; align-items:center; font:700 9px var(--mono); letter-spacing:.12em; color:#8A8A8A; }
+  .chan .ctog.on { background:rgba(242,160,61,.1); border-color:var(--orange); }
+  .chan .ctog.on i { left:calc(100% - 29px); background:var(--orange); box-shadow:0 0 10px rgba(242,160,61,.7); }
+  .chan .ctog.on span { right:auto; left:7px; color:var(--orange); }
+  .cBody { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 104px; gap:10px; align-items:center; }
+  .cL { display:flex; flex-direction:column; gap:7px; min-width:0; }
+  .crow { display:grid; grid-template-columns:62px minmax(0,1fr); align-items:center; gap:8px; }
+  .clab { font:500 9px var(--mono); letter-spacing:.14em; color:#6E6E6E; white-space:nowrap; }
+  .skeys { display:flex; gap:4px; min-width:0; }
+  .skey { flex:1 1 0; min-width:0; height:26px; padding:0 3px; font:700 9px var(--mono); letter-spacing:.03em; background:#121212; color:#9A9A9A; border:1px solid #2E2E2E; overflow:hidden; text-overflow:ellipsis;
+    clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px); }
+  .chan .skey.on { background:#E8E8E8; color:#0A0A0A; border-color:#E8E8E8; }
+  .cstep { display:grid; grid-template-columns:26px minmax(0,1fr) 26px; height:26px; border:1px solid #2E2E2E; background:#0F0F0F; }
+  .cstep .stp { padding:0; height:24px; background:#161616; border:none; color:#9A9A9A; clip-path:none; font-size:10px; }
+  .cstep .cfx { display:flex; align-items:center; justify-content:center; gap:6px; font:700 10px var(--disp); letter-spacing:.12em; color:#E8E8E8; white-space:nowrap; overflow:hidden; min-width:0; }
+  .cstep .cfx i { font:500 9px var(--mono); color:var(--orange); font-style:normal; }
+  .cstep.dis .stp { opacity:.25; pointer-events:none; }
+  .cbl { display:grid; grid-template-columns:minmax(0,1fr) 52px 52px; gap:4px; }
+  .cblend, .csolo, .cbyp { height:26px; padding:0 6px; font:700 9.5px var(--mono); letter-spacing:.1em; background:#121212; color:#C8C8C8; border:1px solid #2E2E2E; overflow:hidden; text-overflow:ellipsis;
+    clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px); }
+  .chan .csolo.on { background:var(--orange); color:#0A0A0A; border-color:var(--orange); }
+  .chan .cbyp.on { background:#E8E8E8; color:#0A0A0A; border-color:#E8E8E8; }
+  .cR { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .opstat { font:500 9px var(--mono); letter-spacing:.1em; color:#6E6E6E; text-align:center; white-space:nowrap; }
+  .opstat.live { color:var(--orange); }
+
+  /* widgets */
+  .wgt { display:block; }
+  .wgauge { width:96px; height:96px; flex:0 0 auto; }
+  .wgauge canvas { width:100%; height:100%; display:block; cursor:ns-resize; touch-action:none; }
+  .wseg { width:100%; height:18px; }
+  .wseg canvas { width:100%; height:18px; display:block; cursor:ew-resize; touch-action:none; }
+
+  /* RIGHT COLUMN TABS: INSPECTOR | SETTINGS */
+  .rtabs { flex:0 0 34px; display:flex; align-items:stretch; gap:2px; border-bottom:1px solid #1C1C1C; }
+  .rtab { clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%); padding:0 30px 0 18px; font:700 11px var(--disp); letter-spacing:.2em; background:#111; color:#6E6E6E; border:none; }
+  .rtab.on { background:#1C1C1C; color:#F2F2F2; box-shadow:inset 0 -2px 0 var(--orange); }
+  .rtab i { font:500 9px var(--mono); color:#6E6E6E; font-style:normal; letter-spacing:.1em; }
+  #insF .itab { display:none; }
+  #insF .insHead { padding-left:14px; }
+  #topbar #gear { display:none; }
+  /* INSPECTOR */
+  #inspector { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+  .insHead { flex:0 0 46px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #1C1C1C; padding-right:14px; min-width:0; }
+  .itab { height:100%; display:flex; align-items:center; padding:0 26px 0 18px; background:#181818; clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%); font:700 11px var(--disp); letter-spacing:.2em; white-space:nowrap; }
+  .insTag { font:900 12px var(--disp); letter-spacing:.08em; background:var(--orange); color:#0A0A0A; padding:5px 12px 5px 9px; clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%); flex:0 0 auto; }
+  .insTitle { font:900 18px var(--disp); letter-spacing:.04em; color:#F2F2F2; transform:skewX(-10deg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1 1 auto; }
+  .caution { font:700 9px var(--mono); letter-spacing:.14em; padding:5px 9px; color:var(--orange); border:1px solid rgba(242,160,61,.5); white-space:nowrap;
+    background:repeating-linear-gradient(-45deg,rgba(242,160,61,.12) 0 6px,transparent 6px 12px); }
+  .insBody { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:10px; padding:10px; }
+  .insColL, .insColR { min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding-right:2px; scrollbar-width:thin; scrollbar-color:#2a2a2a transparent; }
+  .ipanel { flex:0 0 auto; background:#0A0A0A; border:1px solid #1E1E1E; padding:10px 11px 11px;
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px); }
+  .ipanel.strobe.armed { border-color:rgba(242,160,61,.55); }
+  .iph { display:flex; align-items:center; gap:8px; font:700 10.5px var(--disp); letter-spacing:.18em; color:#E8E8E8; margin-bottom:9px; white-space:nowrap; min-width:0; }
+  .iph span { font:500 9px var(--mono); letter-spacing:.12em; color:#6E6E6E; overflow:hidden; text-overflow:ellipsis; }
+  .iph .acc { color:var(--orange); margin-left:auto; }
+  .iph .danger { color:#C0392B; }
+  .iph .gxon { margin-left:auto; }
+  .ipanel label, .klab { display:block; font:500 9px var(--mono); letter-spacing:.14em; color:#6E6E6E; margin:8px 0 4px; text-transform:uppercase; }
+  .ipanel label:first-of-type { margin-top:0; }
+  .ipanel .hdim, .hdim { display:block; font:500 9px var(--mono); letter-spacing:.06em; color:#5E5E5E; margin-top:6px; line-height:1.5; }
+  .htx { resize:vertical; min-height:44px; text-transform:uppercase; letter-spacing:.06em; }
+  .kgrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; margin:4px 0; }
+  .kgrid.k1 { grid-template-columns:1fr; } .kgrid.k3 { grid-template-columns:repeat(3,minmax(0,1fr)); } .kgrid.k4 { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .kbtn { height:28px; padding:0 6px; font:700 9.5px var(--mono); letter-spacing:.1em; background:#121212; color:#9A9A9A; border:1px solid #2E2E2E; overflow:hidden; text-overflow:ellipsis; }
+  .ipanel .kbtn.on { background:#E8E8E8; color:#0A0A0A; border-color:#E8E8E8; }
+  .ipanel .kbtn.go { background:var(--orange); color:#0A0A0A; border-color:var(--orange); }
+  .kv { display:flex; justify-content:space-between; font:500 9px var(--mono); letter-spacing:.12em; color:#6E6E6E; border-bottom:1px dashed #222; padding:3px 0; }
+  .kv b { color:#E8E8E8; font-weight:700; }
+  .kv3 { display:flex; flex-direction:column; gap:2px; margin:4px 0; }
+  .aistat { margin:6px 0; padding:5px 7px; font:500 9px var(--mono); letter-spacing:.08em; color:#8A8A8A; border:1px dashed #2E2E2E; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fonts { display:flex; flex-wrap:wrap; gap:3px; max-height:92px; overflow:auto; padding:4px; border:1px solid #222; background:#0c0c0c; }
+  .fchk { font:500 8.5px var(--mono); padding:3px 6px; clip-path:none; }
+  .ipanel .fchk.on { background:var(--orange); color:#0A0A0A; }
+  .hdrop { border:1px dashed #3A3A3A; padding:14px 8px; color:#8A8A8A; font:500 10px var(--mono); letter-spacing:.08em; text-align:center; }
+  .hdrop.drop { border-color:var(--orange); color:var(--orange); }
+  .aidrop { border:1px dashed #3A3A3A; padding:12px 8px; color:#8A8A8A; font:500 10px var(--mono); letter-spacing:.06em; text-align:center; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .aidrop.on, .aidrop:hover { border-color:var(--orange); color:var(--orange); }
+  .insEmpty { font:500 9.5px var(--mono); letter-spacing:.12em; color:#4A4A4A; padding:10px 0; }
+  .pxblk { margin-bottom:8px; }
+  .pxhd { display:flex; width:100%; align-items:center; gap:7px; font:700 10px var(--disp); letter-spacing:.14em; color:#C8C8C8; margin:2px 0 8px; padding:5px 6px;
+    background:#111; border:1px solid #1E1E1E; cursor:pointer; text-align:left; }
+  .pxhd:hover { border-color:#3A3A3A; color:#fff; }
+  .pxhd i { font-style:normal; color:var(--orange); width:10px; }
+  .pxhd em { font:600 8.5px var(--mono); font-style:normal; letter-spacing:.12em; color:var(--orange); }
+  .pxhd span { margin-left:auto; font:500 9px var(--mono); color:#6E6E6E; }
+  .pxblk.col { margin-bottom:5px; }
+  .pxblk.col .pxhd { margin-bottom:4px; }
+  .pxsum { display:flex; flex-wrap:wrap; gap:4px; padding:0 2px 2px; }
+  .pxchip { font:500 8.5px var(--mono); letter-spacing:.06em; color:#7A7A7A; background:#0E0E0E; border:1px solid #1C1C1C; padding:2px 5px; }
+  .pxchip b { color:#D8D8D8; font-weight:600; }
+  .pxchip.lk { color:var(--orange); border-color:rgba(242,160,61,.35); }
+  .pxall { display:flex; gap:6px; margin:0 0 8px; }
+  .pxall .kbtn { flex:1; }
+  .iph { cursor:pointer; user-select:none; }
+  .ipanel.pcol { padding-bottom:4px; }
+  .ipanel.pcol > :not(.iph) { display:none !important; }
+  .ipanel.pcol .iph { margin-bottom:0; }
+  .pgrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:8px; }
+  .pcell { background:#0D0D0D; border:1px solid #1C1C1C; padding:8px; display:flex; flex-direction:column; gap:6px; min-width:0; margin-bottom:6px; }
+  .pgrid .pcell { margin-bottom:0; }
+  .pcell.linked { border-color:rgba(242,160,61,.45); }
+  .pg { align-items:center; }
+  .phd { display:flex; align-items:center; gap:6px; width:100%; min-width:0; }
+  .ret { width:12px; height:12px; color:#6E6E6E; flex:0 0 auto; }
+  .pcell.linked .ret { color:var(--orange); }
+  .pcell.react .ret { animation:hvspin 2.4s linear infinite; }
+  .pname { font:700 9.5px var(--disp); letter-spacing:.12em; color:#E8E8E8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .pstat { font:500 8.5px var(--mono); letter-spacing:.1em; color:#6E6E6E; white-space:nowrap; }
+  .pcell.react .pstat { color:var(--orange); }
+  .plink { display:flex; align-items:center; gap:4px; }
+  .lbtn { width:24px; height:22px; padding:0; font:700 9.5px var(--mono); background:#121212; color:#8A8A8A; border:1px solid #2E2E2E; clip-path:none; }
+  .ipanel .lbtn.on { background:var(--orange); color:#0A0A0A; border-color:var(--orange); }
+  .pcell.react .lbtn.on { animation:hvglow .55s ease-in-out infinite alternate; }
+  .plink .wgauge { width:34px; height:34px; }
+  .ps .phd .pstat { margin-left:4px; }
+  .ps .phd .plink { margin-left:auto; }
+  .psrow { display:flex; align-items:center; gap:8px; }
+  .psrow .wseg { flex:1 1 auto; }
+  .segv { flex:0 0 46px; text-align:right; font:700 12px var(--mono); color:#E8E8E8; }
+  .plegend { font:500 8.5px var(--mono); letter-spacing:.12em; color:#6E6E6E; line-height:1.7; margin-top:4px; }
+  .plegend .acc { color:var(--orange); }
+  .gxon { height:26px; font:900 10px var(--disp); letter-spacing:.14em; padding:0 12px; background:#1A1A1A; color:#8A8A8A; border:1px solid #3A3A3A; }
+  .ipanel .gxon.on { background:var(--orange); color:#0A0A0A; border-color:var(--orange); box-shadow:0 0 10px rgba(242,160,61,.6); }
+  .sgrid { display:grid; grid-template-columns:auto minmax(0,1fr); gap:12px; align-items:center; margin-bottom:8px; }
+  .sgR { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  .hazard { margin-top:8px; padding:6px 8px; font:700 9px var(--mono); letter-spacing:.16em; color:#E8E8E8; background:repeating-linear-gradient(-45deg,#1A1A1A 0 7px,#0F0F0F 7px 14px); border:1px solid #3A3A3A; }
+  .bgrow2 { display:grid; grid-template-columns:auto minmax(0,1fr); gap:12px; align-items:center; margin-top:8px; }
+  .bgtxt { display:flex; flex-direction:column; gap:5px; min-width:0; }
+  .bgtxt b { font:700 10px var(--disp); letter-spacing:.14em; }
+  .bgtxt span { font:500 9px var(--mono); color:#8A8A8A; line-height:1.5; }
+  .bgtxt .bgdesc { color:#C8C8C8; }
+  .swatch { height:52px; border:1px solid #2E2E2E; display:flex; align-items:flex-end; padding:4px; }
+  .swatch span { font:700 8px var(--mono); letter-spacing:.14em; color:#0A0A0A; background:#E8E8E8; padding:1px 4px; }
+  .sw-none { background:#000; }
+  .sw-plasma { background:radial-gradient(circle at 30% 40%,#F2A03D 0,transparent 42%),radial-gradient(circle at 72% 62%,#E8E8E8 0,transparent 36%),#111; }
+  .sw-cymatics { background:repeating-radial-gradient(circle at 50% 50%,#E8E8E8 0 1px,#0A0A0A 1px 6px); }
+  .sw-singularity { background:radial-gradient(circle at 50% 50%,#000 0 16%,#F2A03D 17% 20%,transparent 21%),repeating-conic-gradient(from 0deg at 50% 50%,#1A1A1A 0 8deg,#555 8deg 10deg); }
+  .sw-filament { background:linear-gradient(115deg,transparent 45%,#fff 46% 48%,transparent 49%),linear-gradient(70deg,transparent 60%,#F2A03D 61% 62%,transparent 63%),#0A0A0A; }
+  .sw-tangle { background:linear-gradient(160deg,transparent 30%,rgba(255,255,255,.55) 31%,transparent 33%),linear-gradient(20deg,transparent 55%,rgba(255,255,255,.35) 56%,transparent 57%),linear-gradient(90deg,transparent 49%,#fff 50%,transparent 51%),#0A0A0A; }
+  .colbar { height:6px; margin:6px 0 4px; clip-path:polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px); }
+  .col-hvft { background:linear-gradient(90deg,#000,#030E12 13%,#682208 36%,#EC7020 59%,#FFAC4A 78%,#FFCE8A 94%,#FFE4B8); }
+  .huebar { position:relative; height:12px; margin:4px 0 6px; cursor:crosshair; background:linear-gradient(90deg,hsl(0,90%,55%),hsl(60,90%,55%),hsl(120,90%,55%),hsl(180,90%,55%),hsl(240,90%,60%),hsl(300,90%,55%),hsl(359,90%,55%)); clip-path:polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px); }
+  .huebar i { position:absolute; top:-1px; bottom:-1px; width:3px; margin-left:-1px; background:#fff; box-shadow:0 0 0 1px #000; pointer-events:none; }
+  .col-white { background:linear-gradient(90deg,#000,#fff); }
+  .col-blue { background:linear-gradient(90deg,#000,#59b3ff); }
+  .col-gray { background:linear-gradient(90deg,#000,#dbe6ff); }
+  .sw-gyro { background:radial-gradient(circle at 50% 50%,#fff 0 6%,transparent 7%),radial-gradient(ellipse 34% 12% at 50% 50%,transparent 80%,rgba(255,255,255,.7) 86%,transparent 92%),radial-gradient(ellipse 12% 34% at 50% 50%,transparent 80%,rgba(255,255,255,.55) 86%,transparent 92%),#0A0A0A; }
+  .sw-eclipse { background:radial-gradient(circle at 50% 50%,#000 0 22%,#fff 24%,rgba(242,160,61,.5) 30%,rgba(120,60,40,.25) 45%,#0A0A0A 70%); }
+  .sw-beam { background:linear-gradient(120deg,transparent 47%,rgba(255,255,255,.25) 48%,#fff 50%,rgba(255,255,255,.25) 52%,transparent 53%),radial-gradient(ellipse 30% 12% at 50% 50%,rgba(255,255,255,.6),transparent 70%),#0A0A0A; }
+  .col-violet { background:linear-gradient(90deg,#000,#3A0F5C,#C2187A,#FF8A3D,#fff); }
+  .col-random { background:linear-gradient(90deg,#ff2d55,#ff9f0a,#ffd60a,#30d158,#0a84ff,#bf5af2,#ff2d55); }
+
+  /* BANKS */
+  #scenebar > .fin { flex-direction:row; align-items:stretch; gap:10px; padding:10px 14px; }
+  .bdeck { display:flex; flex-direction:column; justify-content:space-between; gap:6px; flex:0 0 auto; }
+  .bdeck .bt { font:700 11px var(--disp); letter-spacing:.2em; }
+  .bdeck .ab { display:flex; gap:4px; }
+  .bdeck .ab button { width:34px; height:28px; padding:0; font:900 12px var(--disp); background:#121212; color:#9A9A9A; }
+  .bdeck .ab button.on { background:#E8E8E8; color:#0A0A0A; border-color:#E8E8E8; }
+  #sceneArm { height:28px; font:700 9px var(--mono); letter-spacing:.12em; padding:0 8px; }
+  #sceneArm.on { background:var(--orange); color:#0A0A0A; border-color:var(--orange); }
+  .banks { flex:1 1 auto; display:flex; gap:8px; min-width:0; }
+  .bnk { flex:1 1 0; min-width:0; display:flex; flex-direction:column; justify-content:space-between; align-items:stretch; padding:8px 10px; background:#111; border:1px solid #2A2A2A; text-align:left;
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px); }
+  .bnktop { display:flex; align-items:center; gap:6px; }
+  .bnkn { font:900 20px/1 var(--disp); color:#E8E8E8; }
+  .bnklive { font:700 8px var(--mono); letter-spacing:.12em; background:var(--orange); color:#0A0A0A; padding:2px 5px; }
+  .bnkd { margin-left:auto; display:flex; gap:3px; }
+  .bnkd i { width:6px; height:6px; background:#2E2E2E; display:block; }
+  .bnkd i.on { background:#E8E8E8; }
+  .bnkl { font:700 9px var(--mono); letter-spacing:.12em; color:#C8C8C8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bnk.empty { opacity:.4; }
+  .bnk.empty .bnkl { color:#6E6E6E; }
+  .bnk.cur { border-color:var(--orange); background:#1A130A; }
+  .bnk.cur .bnkn { color:var(--orange); }
+  .bright { display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; flex:0 0 auto; }
+  .hv { font:700 9px var(--mono); letter-spacing:.16em; color:#0A0A0A; background:var(--orange); padding:4px 8px; }
+  .bright span { font:500 9px var(--mono); letter-spacing:.14em; color:#6E6E6E; }
+
+  /* SETTINGS = tab inside the right column (docked, not floating) */
+  #panel { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+  #panel.hidden { display:none; }
+  #panel:not(.hidden) ~ #inspector { display:none; }
+  #setToggle { display:none; }
+  #deepset { flex:1 1 auto; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#2a2a2a transparent; }
+  .sec { border-bottom:1px solid #1C1C1C; }
+  /* SIMPLE (Oct 12): SETTINGS keeps only CONTROLS + AI KEY; everything that is a duplicate of the inspector / header,
+     or a fine-tuning detail, shows only in ADVANCED (body.adv) */
+  body:not(.adv) .sec[data-sec="lidar"], body:not(.adv) .sec[data-sec="pc3d"], body:not(.adv) .sec[data-sec="look"],
+  body:not(.adv) .sec[data-sec="audio"], body:not(.adv) .sec[data-sec="blob"] { display:none; }
+  /* Oct 12 (Reza: "ringkas bener"): sections fully duplicated elsewhere are gone in BOTH modes —
+     AI key/model/prompt/mode/ref + Anime GAN = CH4 inspector · camera + mirror = channel SOURCE · matte = CROP panel · output = ▶ PROJECTOR */
+  .sec[data-sec="aikeys"], .sec[data-sec="ailive"], .sec[data-sec="animegan"], .sec[data-sec="kamera"],
+  .sec[data-sec="matte"], .sec[data-sec="output"] { display:none !important; }
+  /* Oct 12 (Reza: projector button must dominate the hierarchy) — biggest control in the header, first in the row */
+  .laybtns #projBtn { height:28px; padding:0 16px; margin:0 14px 0 4px; position:relative; font:700 11px var(--disp); letter-spacing:.16em; background:#1d1308; color:var(--orange); border:2px solid var(--orange); box-shadow:0 0 0 1px #0A0A0A, 0 0 14px rgba(242,160,61,.25); }
+  .laybtns #projBtn::after { content:''; position:absolute; right:-10px; top:2px; bottom:2px; width:1px; background:#333; }
+  .laybtns #projBtn:hover { background:var(--orange); color:#0A0A0A; }
+  .laybtns #projBtn.on { background:#e2553c; color:#fff; border-color:#e2553c; box-shadow:0 0 16px rgba(226,85,60,.55); animation:projlive 1.2s ease-in-out infinite alternate; }
+  @keyframes projlive { from { box-shadow:0 0 6px rgba(226,85,60,.35) } to { box-shadow:0 0 18px rgba(226,85,60,.8) } }
+  .sech { position:relative; width:100%; text-align:left; background:transparent; border:none; clip-path:none; padding:11px 14px 11px 26px; font:700 10px var(--disp); letter-spacing:.2em; color:#8A8A8A;
+    display:flex; justify-content:space-between; align-items:center; text-transform:uppercase; }
+  .sech::before { content:''; position:absolute; left:11px; top:50%; transform:translateY(-50%); width:6px; height:6px; border:1px solid var(--orange); }
+  .sec.open > .sech { color:#E8E8E8; border-bottom:1px solid #1c1509; }
+  .sec.open > .sech::before { background:var(--orange); }
+  .sech .arw { color:#6E6E6E; font-size:10px; }
+  .secb { display:none; padding:4px 14px 14px; }
+  .sec.open .secb { display:block; }
+  .fld { display:flex; justify-content:space-between; align-items:baseline; gap:8px; text-transform:uppercase; font:500 9px var(--mono); letter-spacing:.15em; color:#8A8A8A; margin:12px 0 4px; padding-bottom:3px; border-bottom:1px dashed #1d1d1d; }
+  .fld .val { color:var(--orange); font-weight:700; background:#150e05; border:1px solid #3a2a14; padding:0 5px; }
+  .row { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+  .row button { flex:1 1 auto; padding:6px 8px; font:700 9px var(--mono); letter-spacing:.06em; text-transform:uppercase; }
+  .secb select { margin-top:4px; }
+  .hint { font:500 9.5px var(--mono); line-height:1.55; color:#6E6E6E; margin-top:8px; }
+  .hint b { color:var(--orange); }
+  .hrow { display:flex; gap:4px; align-items:center; }
+  .hbtn { font:700 9px var(--mono); padding:5px 9px; }
+
+  /* hidden legacy */
+  #fxbar, #layers, #pcwin { display:none !important; }
+</style>
+<style>/* ISF SHADER FX panel (isf_fx.js) */ .isfrow{display:grid;grid-template-columns:1fr;gap:3px;margin:7px 0 2px} .isfrow .plink{display:flex;gap:3px;align-items:center;flex-wrap:wrap} .isfrow .kbtn{justify-self:start;min-width:60px}
+ .isfgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:6px;margin:8px 0 4px}
+ .isfcell{border:1px solid #222;background:#0E0E0E;padding:4px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+ .isfcell .klab{margin:0;width:100%;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8.5px;letter-spacing:.08em}
+ .isfcell .wgauge{width:50px;height:50px}
+ .isfmod{display:flex;gap:4px;align-items:center;justify-content:center}
+ .isfmod .wgauge{width:26px;height:26px}
+ .isfcell .isfbool{min-width:0;width:100%;height:30px;margin:10px 0}
+ .isfcell select.hin{width:100%;font-size:10px;margin-top:12px}
+ .isfhit{font:700 11px var(--mono);color:var(--orange);margin-top:14px}
+ .isfcell .hdim{font-size:8.5px;text-align:center}</style>
+</head>
+<body>
+  <!-- ================= TOP TRANSPORT ================= -->
+  <header id="topbar" class="frame"><div class="fin">
+    <div class="tg">
+      <div id="brand"><span class="bh">HVFT</span><span class="bv">VISION</span></div>
+      <div class="serial"><b>NOISE</b><span>SN-7XK02</span><div class="barcode"></div></div>
+    </div>
+    <div class="tsep"></div>
+    <div class="tg">
+      <div class="tst"><span class="tl">MIC</span><span id="micStat">○ DISARMED · [M]</span></div>
+      <button id="mic">Enable Mic</button>
+      <div id="topMeters" class="tmeters"><i data-b="low"><s></s></i><i data-b="mid"><s></s></i><i data-b="high"><s></s></i><em>L</em><em>M</em><em>H</em></div>
+    </div>
+    <div class="tsep"></div>
+    <div class="tg">
+      <input type="range" id="audamt" data-w="gauge" data-wpx="66" min="0" max="100" value="40">
+      <div class="tst"><span class="tl">HOW<br>REACTIVE</span><span class="ts">MASTER AUDIO GAIN · <span id="audv">40%</span></span></div>
+    </div>
+    <div class="tsep"></div>
+    <div class="tg">
+      <div class="tst"><span class="ts"><i id="beatLed" class="led"></i>&nbsp; BPM</span><span class="bpmv" id="bpmVal">128.0</span></div>
+      <button id="tapBtn">TAP</button>
+    </div>
+    <div class="tsep"></div>
+    <div class="tg">
+      <input type="range" id="mFade" data-w="gauge" data-wpx="66" data-tone="mono" min="0" max="100" value="100">
+      <div class="tst"><span class="tl">MASTER</span><span class="ts">OPACITY · <span id="mFv">100%</span></span><span class="tfade"><button id="mIn">FADE IN</button><button id="mOut">FADE OUT</button></span></div>
+      <button id="mBlack" class="big">BLACKOUT</button>
+    </div>
+    <div class="tsp"></div>
+    <div class="telem">
+      <div><span>FPS</span><b id="tFps">--</b></div><div><span>CH</span><b id="tCh">0/4</b></div>
+      <div><span>IN</span><b id="tIn">NO SIG</b></div><div><span>RUN</span><b id="tRun">00:00:00</b></div>
+      <div id="status">loading…</div>
+    </div>
+    <button id="gear">⚙ SETTINGS</button>
+    <button id="mapmon"><svg width="22" height="22" viewBox="0 0 22 22"><rect x="2" y="2" width="18" height="18" fill="none" stroke="#0A0A0A" stroke-width="2" stroke-dasharray="5 8"></rect><circle cx="11" cy="11" r="3" fill="#0A0A0A"></circle></svg>MAP ▸</button>
+  </div></header>
+
+  <!-- ================= MAIN ================= -->
+  <div id="mainrow">
+    <div id="colL">
+      <section id="pgmF" class="frame"><div class="fin">
+        <div class="htab"><span class="tab">▸ MIX / MAPPING</span><span class="hsub">OUT.01</span><span id="layBtns" class="laybtns" title="one-click output layout (saved in the preset)"><button id="projBtn" title="open / close the projector window (goes straight to the extend screen, full screen)">▶ PROJECTOR</button><i>OUT</i><button data-lay="grid">2×2</button><button data-lay="0">CH1</button><button data-lay="1">CH2</button><button data-lay="2">CH3</button><button data-lay="3">CH4</button><button data-lay="mix">MIX</button><button id="chaosBtn" title="⚡ CHAOS · light flashes on every hit (some invert, some double-strike), the stage gets brighter / harder the louder the noise, HIGH = white flicker · OFF / 50 / MAX · saved in the preset · mic off = no flashes">⚡ MAX</button><button id="qualBtn" title="projector sharpness · HD = channels render at the projector's own resolution (max 1920) · CRISP = HD + hard pixels, no blur · LITE = 1280, lighter for the Mac">HD</button></span><span class="hsp"></span><button id="rec">● REC</button><span id="pgmLive" class="chip live">● LIVE</span></div>
+        <div id="mapbar" class="mapbar"><span class="mt">✎ MAP EDIT</span><span id="mapInfo" class="mi"></span>
+          <button data-map="prev">◂</button><button data-map="next">▸</button><button data-map="src">SOURCE ▸</button><button data-map="fit">FILL ⇄ CROP</button><button data-map="full">FULL FRAME</button><button data-map="add">+ ADD</button><button data-map="del">− DEL</button><button data-map="reset">RESET 2×2</button><button data-map="proj">PROJECTOR MAP ▸</button><button data-map="done" class="go">✓ DONE</button>
+          <span class="mh">DRAG CORNER / BODY · ARROWS NUDGE (⇧ = ×5) · TAB NEXT · ESC DONE</span></div>
+        <div class="pbody">
+          <div id="stage">
+            <canvas id="view"></canvas>
+            <canvas id="deckcv"></canvas>
+            <div class="pov"><i class="br tl"></i><i class="br tr"></i><i class="br bl"></i><i class="br bR"></i>
+              <svg viewBox="0 0 34 34"><circle cx="17" cy="17" r="9" fill="none" stroke="#F2F2F2" stroke-width="1"/><path d="M17 2v9M17 23v9M2 17h9M23 17h9" stroke="#F2F2F2" stroke-width="1"/></svg>
+              <div id="pgmInfo">-- FPS · 0/4 CH · NO PATTERN</div></div>
+            <div id="pgmBlack">■ BLACKOUT</div>
+            <div id="outRes" title="the projector window reports its size; the MIX monitor and the channels follow its shape">OUT · 16:9 · NO PROJECTOR YET</div>
+            <div id="drop">DROP FILE HERE</div>
+          </div>
+        </div>
+      </div></section>
+      <div class="hgut" data-g="mix" title="drag to resize · double-click = reset"></div>
+      <section id="pvF" class="frame"><div class="fin">
+        <div class="htab"><span class="tab">▸ CH PREVIEW</span><span class="hsub" id="pvName">CH1–4</span></div>
+        <div id="layerprev"></div>
+      </div></section>
+      <div class="hgut" data-g="aud" title="drag to resize · double-click = reset"></div>
+      <section id="audioin" class="frame disarmed"><div class="fin">
+        <div class="htab"><span class="tab">▸ AUDIO IN</span><div id="ainrow" title="Audio source for every window (control, projector, deck, point cloud). Raw capture: no noise suppression / echo cancel / auto gain."><select id="ainDev" title="INPUT DEVICE — USB audio interface, built-in mic …"><option value="">System default input</option></select>
+            <select id="ainCh" title="Which input of the interface to listen to"><option value="mix">MIX</option><option value="L">IN 1 (L)</option><option value="R">IN 2 (R)</option></select>
+            <select id="ainTrim" title="Input trim before analysis"><option value="0.25">-12 dB</option><option value="0.5">-6 dB</option><option value="1">0 dB</option><option value="2">+6 dB</option><option value="4">+12 dB</option><option value="8">+18 dB</option></select></div></div>
+        <div class="abody">
+          <div id="meters">
+            <div class="mrow" data-b="low"><span class="mbig">L</span><div><div class="mname"><span>LOW · 20–250 HZ</span><span class="mlk"></span></div><canvas class="mseg"></canvas></div><span class="mdb">—</span></div>
+            <div class="mrow" data-b="mid"><span class="mbig">M</span><div><div class="mname"><span>MID · 250–4K HZ</span><span class="mlk"></span></div><canvas class="mseg"></canvas></div><span class="mdb">—</span></div>
+            <div class="mrow" data-b="high"><span class="mbig">H</span><div><div class="mname"><span>HIGH · 4K–20K HZ</span><span class="mlk"></span></div><canvas class="mseg"></canvas></div><span class="mdb">—</span></div>
+            <div id="nosig"><b>NO SIGNAL</b><span>MIC DISARMED · PRESS [M]</span></div>
+          </div>
+          <div class="specw"><canvas id="spec" width="420" height="30"></canvas><div id="ainInfo">INPUT · system default</div></div>
+          <div id="specinfo">low — · mid — · high — · flux —</div>
+        </div>
+      </div></section>
+    </div>
+    <div class="vgut" data-g="L" title="drag to resize · double-click = reset"></div>
+    <section id="chanF" class="frame"><div class="fin">
+      <div class="htab"><span class="tab">▸ CHANNEL STACK</span><span class="hsub">[1–4] SELECT</span><span class="hsp"></span><div id="gfeat" class="gfeat"></div></div>
+      <div id="decktools"><b>DECK</b><button id="dAddL">+ Layer</button><button id="dAddC">+ Column</button></div>
+      <div id="deckbar"></div>
+    </div></section>
+
+    <div class="vgut" data-g="C" title="drag to resize · double-click = reset"></div>
+    <section id="insF" class="frame" style="--n:18px"><div class="fin">
+      <div class="rtabs"><button class="rtab on" data-rt="ins">▸ INSPECTOR</button><button class="rtab" data-rt="set">⚙ SETTINGS <i>[S]</i></button></div>
+      <aside id="panel" class="hidden">
+        <button id="setToggle" class="setToggle">✕</button>
+        <div id="deepset">
+      <div class="sec open" data-sec="advanced">
+        <button class="sech">CONTROLS <span class="arw">▾</span></button>
+        <div class="secb">
+          <div class="row"><button id="advToggle">SIMPLE · FIXED BEST VALUES (ADVANCED OFF)</button></div>
+          <div class="hint">SIMPLE = the inspector only asks <b>which</b>, values are tested best. ADVANCED = every slider + LIDAR / PC-3D / HUD / AUDIO / BLOB fine-tune below. Everything for a channel (AI key, camera, mirror, crop) is in its INSPECTOR.</div>
+        </div>
+      </div>
+      <div class="sec open" data-sec="aikeys">
+        <button class="sech">AI · GEMINI KEY <span class="arw">▾</span></button>
+        <div class="secb" id="aiKeyBox">
+          <div class="hint">Only for CH4 AI LIVE in Gemini mode. Stored on this computer only. Reference / Anime GAN need no key.</div>
+        </div>
+      </div>
+      <div class="sec open" data-sec="kamera">
+        <button class="sech">CAMERA & DISPLAY <span class="arw">▾</span></button>
+        <div class="secb">
+          <select id="cam"></select>
+          <div class="row"><button id="mirror" class="on">Mirror</button></div>
+          <div class="hint">Resolution & display auto-follow the best screen · Subject-focus mask (Auto). HUD / GRID / BLOB switches are on the <b>DECK</b> bar (below the preview).</div>
+        </div>
+      </div>
+
+      <div class="sec" data-sec="lidar">
+        <button class="sech">LIDAR (DEPTH) <span class="arw">▸</span></button>
+        <div class="secb">
+          <div class="hint">LIDAR: use NEAR/FAR (meters) to remove the background. DEPTH-AI: use BG CUT — raise it until the wall/background disappears and only the subject remains.</div>
+          <div class="fld">COLOR (Depth-AI / LiDAR)</div>
+          <div class="row" id="dColor">
+            <button data-dc="depth" class="on">Depth (grayscale)</button>
+            <button data-dc="rgb">RGB camera</button>
+            <button data-dc="plexus">Plexus ✦</button>
+            <button data-dc="thermal">Thermal 🔥</button>
+            <button data-dc="displace">Displace ⤢</button>
+            <button data-dc="key">Depth Key ◐</button>
+            <button data-dc="ir">IR Noise ▒</button>
+            <button data-dc="contour">Contour ≋</button>
+          </div>
+          <div id="displaceCfg" style="display:none">
+            <div class="fld">DISPLACE STRENGTH <span class="val" id="dispAmtv">18%</span></div>
+            <input id="dispAmt" type="range" min="0" max="60" value="18" />
+            <div class="hint">Subject pixels shift by depth → moving relief/parallax effect. Raise BG CUT to keep the background clean.</div>
+          </div>
+          <div class="hint">RGB = subject uses the camera's real colors (background removed by depth), like the old point-cloud. <b>Plexus ✦</b> = silhouette becomes a glowing point mesh + thin lines + light flashes following motion.</div>
+          <div id="plexusCfg" style="display:none">
+            <div class="fld">POINT DENSITY <span class="val" id="pxDenv">6</span></div>
+            <input id="pxDen" type="range" min="3" max="14" value="6" />
+            <div class="fld">LINK DISTANCE <span class="val" id="pxLinkv">7.5%</span></div>
+            <input id="pxLink" type="range" min="30" max="160" value="75" />
+            <div class="fld">LINE OPACITY <span class="val" id="pxLav">55%</span></div>
+            <input id="pxLa" type="range" min="0" max="100" value="55" />
+            <div class="fld">POINT GLOW <span class="val" id="pxGlowv">1.0</span></div>
+            <input id="pxGlow" type="range" min="4" max="30" value="10" />
+            <div class="fld">MOTION FLASH <span class="val" id="pxFlashv">1.0</span></div>
+            <input id="pxFlash" type="range" min="0" max="30" value="10" />
+            <div class="fld">ORANGE ACCENT <span class="val" id="pxAccv">16%</span></div>
+            <input id="pxAcc" type="range" min="0" max="60" value="16" />
+            <div class="fld">BASE SILHOUETTE <span class="val" id="pxBasev">15%</span></div>
+            <input id="pxBase" type="range" min="0" max="60" value="15" />
+            <div class="hint">Points glow on the body; faster motion → brighter flashes & blobs. Set BG CUT above so the wall disappears and only the subject remains.</div>
+          </div>
+          <div class="fld">BG CUT <span class="val" id="dCv">35%</span></div>
+          <input id="dC" type="range" min="0" max="95" value="35" />
+          <div class="fld">FLIP VERTICAL</div>
+          <div class="row" id="dFlip">
+            <button data-df="auto" class="on">Auto</button>
+            <button data-df="normal">Normal</button>
+            <button data-df="flip">Flip</button>
+          </div>
+          <div class="fld">NEAR (m) <span class="val" id="lNv">0.3</span></div>
+          <input id="lN" type="range" min="1" max="30" value="3" />
+          <div class="fld">FAR (m) <span class="val" id="lFv">4.0</span></div>
+          <input id="lF" type="range" min="5" max="80" value="40" />
+          <div class="row"><button id="lRelief" class="on">Relief</button><button id="lGrain">HVFT Grain</button></div>
+        </div>
+      </div>
+
+      <div class="sec" data-sec="pc3d">
+        <button class="sech">PC-3D CLOUD <span class="arw">▸</span></button>
+        <div class="secb">
+          <div class="hint">3D point cloud from Depth-AI (CH2 → PC-3D Cloud source). Dark room: raise <b>BRIGHT</b> & <b>POINT SIZE</b>, use <b>White</b> COLOR. Voxel / Ortho / Glitch / Mesh effects are on the CH2 FX bar. <b>Plexus & Thermal</b> aren't here — those are COLOR modes when the CH2 source = <b>Depth-AI</b>.</div>
+          <div class="fld">COLOR</div>
+          <div class="row" id="pcCol">
+            <button data-pc="rgbcam" class="on">Camera</button>
+            <button data-pc="white">White</button>
+            <button data-pc="depth">Depth</button>
+          </div>
+          <div class="fld">CROP EMPTY AREA <span class="val" id="pcCv">0%</span></div>
+          <input id="pcC" type="range" min="0" max="95" value="0" />
+          <div class="fld">FAR DISTANCE (cut bg) <span class="val" id="pcFv">8.0</span></div>
+          <input id="pcF" type="range" min="10" max="120" value="80" />
+          <div class="fld">BRIGHT (glow) <span class="val" id="pcGv">3.00</span></div>
+          <input id="pcG" type="range" min="20" max="500" value="300" />
+          <div class="fld">POINT SIZE <span class="val" id="pcPsv">9.0</span></div>
+          <input id="pcPs" type="range" min="20" max="200" value="90" />
+          <div class="fld">DENSITY <span class="val" id="pcDv">4.5</span></div>
+          <input id="pcD" type="range" min="10" max="80" value="45" />
+          <div class="fld">ZOOM <span class="val" id="pcZv">1.0×</span></div>
+          <input id="pcZ" type="range" min="40" max="320" value="100" />
+          <div class="row"><button id="pcFit">Fit</button><button id="pcFlip">Flip Y</button></div>
+        </div>
+      </div>
+
+      <div class="sec" data-sec="ailive">
+        <button class="sech">AI RESTYLE · R4 <span class="arw">▸</span></button>
+        <div class="secb">
+          <div class="hint">Restyle the R4 camera. Pick a mode: <b>Reference</b> (realtime — drop a style image) · <b>Gemini</b> (text prompt, slow) Turn on <b>CH4 → AI LIVE</b> first.</div>
+          <div id="aiGeminiCfg" style="display:none">
+          <div class="fld" data-mv="aikey">GEMINI API KEY</div>
+          <input data-mv="aikey" id="aiKey" type="password" placeholder="paste API key (stored locally on this device)" autocomplete="off" style="width:100%;background:#141414;color:#E8E8E8;border:1px solid var(--line);border-radius:0;padding:8px;font:inherit;font-size:12px" />
+          <div class="fld" data-mv="aikey">MODEL</div>
+          <select data-mv="aikey" id="aiModel" title="AUTO uses the fastest image model your key offers"><option value="auto">AUTO — fastest available</option><option value="gemini-3.1-flash-lite-image">3.1 Flash-Lite · fastest</option><option value="gemini-3.1-flash-image">3.1 Flash · 512 px</option><option value="gemini-2.5-flash-image">2.5 Flash · legacy</option></select>
+          <div class="fld">PARALLEL REQUESTS · <span id="aiParV">3</span> <span style="color:#6E6E6E">(more = new image more often · uses more quota)</span></div>
+          <input id="aiPar" type="range" min="1" max="4" step="1" value="3" style="width:100%">
+          </div>
+          <div id="aiPromptCfg" style="display:none">
+          <div class="fld">STYLE / PROMPT (write anything)</div>
+          <textarea id="aiPrompt" rows="3" placeholder="e.g. rough ink-line anime illustration, high contrast, black & white" style="width:100%;background:#141414;color:#E8E8E8;border:1px solid var(--line);border-radius:0;padding:8px;font:inherit;font-size:13px;resize:vertical">turn this photo into an anime illustration with rough ink lines, high contrast, hard cel-shading</textarea>
+          <div class="fld">STYLE PRESETS</div>
+          <div class="row" id="aiPresets"><button data-pp="film">80s ANIME FILM</button><button data-pp="comic">80s COMIC</button><button data-pp="comic90">90s COMIC</button><button data-pp="manga">INK MANGA</button><button data-pp="zine">NOISE ZINE</button><button data-pp="paper">PAPER CRAFT</button><button data-pp="origami">ORIGAMI</button></div>
+          <div class="fld">STYLE REFERENCE IMAGE <span style="color:#6E6E6E">(Gemini only · the AI copies this look)</span></div>
+          <div class="row"><div id="aiGemRef" class="hdrop" style="flex:1;min-height:46px;display:flex;align-items:center;justify-content:center;text-align:center">drag a style image here (optional)</div><button id="aiGemRefX" title="remove the style reference">✕</button></div>
+          <div class="fld">MIN INTERVAL <span class="val" id="aiIvV">ASAP</span></div>
+          <input id="aiIv" type="range" min="0" max="30" value="0" />
+          <div class="hint">0 = the next request fires as soon as the previous result is ready (fastest). Raise it only to save API quota or if you hit a rate-limit.</div>
+          </div>
+          <div class="fld">AI MODE</div>
+          <div class="row" id="aiProv">
+            <button data-p="ref" class="on">Reference (realtime)</button>
+            <button data-p="gemini">Gemini (prompt)</button>
+          </div>
+          <div id="aiRefCfg">
+            <div class="hint">REALTIME. Drop ONE style image (painting/texture/logo) into the box below then START — the camera is restyled into that style, feed-forward, local, far faster than Gemini.</div>
+            <div class="fld">STYLE IMAGE (REFERENCE)</div>
+            <div id="aiRefDrop" class="hdrop" style="min-height:56px;display:flex;align-items:center;justify-content:center;text-align:center">drag a style image here</div>
+            <div class="fld">STYLE STRENGTH <span class="val" id="aiRefSv">100%</span></div>
+            <input id="aiRefS" type="range" min="10" max="100" value="100" />
+            <div class="fld">BECOME CHARACTER (click = swap live)</div>
+            <div class="hrow" id="aiChars">
+              <button class="hbtn" data-cu="characters/char1.jpg">C1</button>
+              <button class="hbtn" data-cu="characters/char2.jpg">C2</button>
+              <button class="hbtn" data-cu="characters/char3.jpg">C3</button>
+              <button class="hbtn" data-cu="characters/char4.jpg">C4</button>
+            </div>
+            <div class="hint">Your camera is restyled into that character (Reference pipeline, realtime, local). For a stronger result: raise STYLE STRENGTH.</div>
+          </div>
+          <div class="row"><button id="aiStart">START</button><button id="aiOnce">Refresh once</button></div>
+          <div class="hint" id="aiStat">AI: idle</div>
+        </div>
+      </div>
+
+      <div class="sec" data-sec="look">
+        <button class="sech">HUD & LOOK <span class="arw">▸</span></button>
+        <div class="secb">
+          <div class="hint">HUD style (the HUD on/off switch is on the DECK bar). Colour is now set per channel in the INSPECTOR → COLOR.</div>
+          <div class="row" id="colors" style="display:none">
+            <button data-c="hvft" class="on">HVFT</button>
+            <button data-c="white">White</button>
+            <button data-c="blue">Blue</button>
+            <button data-c="gray">Gray</button>
+          </div>
+          <div class="fld">BACKGROUND <span class="val" id="bgv">0%</span></div>
+          <input id="bg" type="range" min="0" max="100" value="0" />
+          <div class="fld">SENSITIVITY <span class="val" id="sensv">50%</span></div>
+          <input id="sens" type="range" min="0" max="100" value="50" />
+          <div class="fld">HUD SIZE <span class="val" id="hudsv">0.7</span></div>
+          <input id="huds" type="range" min="3" max="15" value="7" />
+        </div>
+      </div>
+
+      <div class="sec" data-sec="audio">
+        <button class="sech">AUDIO — BANDS & TOGGLES <span class="arw">▸</span></button>
+        <div class="secb">
+          <div class="hint">Mic on/off and HOW REACTIVE are on the top bar. Live spectrum is under the preview (AUDIO IN). Here: band focus and per-feature audio toggles.</div>
+          <div class="row" id="band">
+            <button data-b="low">Low</button>
+            <button data-b="mid">Mid</button>
+            <button data-b="high">High</button>
+            <button data-b="all" class="on">All</button>
+          </div>
+          <div class="row" id="aud">
+            <button data-a="density" class="on">Density</button>
+            <button data-a="burst" class="on">Burst</button>
+            <button data-a="strobe" class="on">Strobe</button>
+            <button data-a="mesh" class="on">Mesh</button>
+          </div>
+          <div class="row"><button id="apanel">Audio Panel (spectrum+wave)</button></div>
+        </div>
+      </div>
+
+      <div class="sec" data-sec="blob">
+        <button class="sech">BLOB & GRID — SETTINGS <span class="arw">▸</span></button>
+        <div class="secb">
+          <div class="hint">On/off & type (BLOB white/green/track, GRID) are on the <b>DECK</b> bar. Here is only the fine-tuning.</div>
+          <div class="fld">BLOB COLOR (varied)</div>
+          <div class="row" id="blobcm">
+            <button data-bcm="mono" class="on">Mono</button>
+            <button data-bcm="green">Green</button>
+            <button data-bcm="orange">Orange</button>
+            <button data-bcm="multi">Multi</button>
+          </div>
+          <div class="row"><button id="blobInv">INVERT (filled box)</button></div>
+          <div class="fld">BLOB BOX SIZE <span class="val" id="tszv">6%</span></div>
+          <input id="tsz" type="range" min="1" max="60" value="6" />
+          <div class="hint">Grow/shrink the tracker box here. INVERT = box becomes a filled block. Multi = each object a different color. Object/Motion is set via the BLOB button & track type.</div>
+          <div class="fld">BLOB LINE WIDTH <span class="val" id="blwv">1.2</span></div>
+          <input id="blw" type="range" min="2" max="60" value="12" />
+          <div class="fld">GRID DENSITY <span class="val" id="gcolsv">12</span></div>
+          <input id="gcols" type="range" min="5" max="30" value="12" />
+        </div>
+      </div>
+
+      <div class="sec" data-sec="matte">
+        <button class="sech">SUBJECT CROP (MATTE) <span class="arw">▸</span></button>
+        <div class="secb">
+          <div class="hint">Clean up the subject cut-out before placing a <b>pattern as the BACKGROUND</b> behind it. Applies to layers using <b>Cut-Out</b> / ALPHA.</div>
+          <div class="fld">EDGE SMOOTH (feather) <span class="val" id="mfeatv">32%</span></div>
+          <input id="mfeat" type="range" min="0" max="100" value="32" />
+          <div class="fld">STABILIZER (anti-flicker) <span class="val" id="mstabv">45%</span></div>
+          <input id="mstab" type="range" min="0" max="100" value="45" />
+          <div class="fld">ERODE / EXPAND <span class="val" id="mexpv">0</span></div>
+          <input id="mexp" type="range" min="0" max="100" value="50" />
+          <div class="row"><button id="mclean" class="on">Fill Holes + Remove Specks</button></div>
+          <div class="hint">ERODE to the left = remove background fringe stuck to the edge · to the right = loosen. High STABILIZER = calmer edge but slightly slower to follow fast motion.</div>
+        </div>
+      </div>
+
+      <div class="sec" data-sec="output">
+        <button class="sech">OUTPUT & PRESET <span class="arw">▸</span></button>
+        <div class="secb">
+          <select id="disp"></select>
+          <div class="row">
+            <button id="send">Send to Monitor [O]</button>
+            <button id="closeout">Close</button>
+          </div>
+          <div class="row"><button id="gridR">GRID 2×2 → R1–R4</button></div>
+          <div class="hint">MAP is on the top bar. Save a look with <b>BANKS</b> (bottom): click = recall · STORE then click = save. Hotkeys: H HUD · F monitor · R rec · S panel.</div>
+        </div>
+      </div>
+      </div><!-- /deepset -->
+      </aside>
+      <div id="inspector"></div>
+    </div></section>
+  </div>
+
+  <!-- ================= BANKS ================= -->
+  <footer id="scenebar" class="frame"><div class="fin">
+    <div class="bdeck"><span class="bt">▸ DECK</span><div class="ab"><button id="deckA" class="on">A</button><button id="deckB">B</button></div><button id="sceneArm">◉ STORE</button></div>
+    <div id="sceneSlots" class="banks"></div>
+    <div class="bright"><span class="hv">⚠ HIGH VOLTAGE</span><span>CLICK RECALL · ⇧CLICK SAVE · ⌥CLICK CLEAR · LIVE = AUTO-SAVE</span><div id="ioBtns" style="display:flex;gap:4px;justify-content:flex-end"></div></div>
+  </div></footer>
+
+
+
+  <!-- hidden legacy (kept for control.js / deck_ui.js bindings) -->
+  <aside id="fxbar">
+    <h4>FX</h4>
+    <button class="fx on" data-fx="pointcloud">Point Cloud</button>
+    <button class="fx" data-fx="triangulate">Triangulate</button>
+    <button class="fx" data-fx="volumetric">Volumetric</button>
+    <button class="fx" data-fx="pixellines">Pixel Lines</button>
+    <button class="fx" data-fx="scan">Scan</button>
+    <button class="fx" data-fx="constellation">Constellation</button>
+    <button class="fx" data-fx="wave">Wave</button>
+    <button class="fx" data-fx="flux">Flux</button>
+    <button class="fx" data-fx="profil">Profile</button>
+    <button class="fx" data-fx="anime">Anime</button>
+    <button class="fx" data-fx="erode">Erode</button>
+    <button class="fx" data-fx="cutout">Cut-Out</button>
+    <button class="fx" data-fx="trackcollage">Tracking</button>
+    <button id="pcwin" class="small">◱ Point Cloud 3D</button>
+    <button id="rnd" class="small">Random: OFF</button>
+    <button id="rndiv" class="small">Every: 5s</button>
+  </aside>
+  <div id="layers"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
+  <script src="vendor/meyda.min.js"></script><script src="audio_in.js"></script><script src="effects.js"></script><script src="txt_fx2.js"></script><script src="bg_tangle.js"></script><script src="bg_more.js"></script><script src="bg_flash.js"></script><script src="vendor/butterchurn.min.js"></script><script src="vendor/butterchurnPresets.min.js"></script><script src="vendor/butterchurnPresetsExtra.min.js"></script><script src="bg_milkdrop.js"></script><script src="vendor/isf.js"></script><script src="isf_pack.js"></script><script src="isf_fx.js"></script><script src="fx_extra.js"></script>
+  <script src="plexus_engine.js"></script>
+  <script src="rvm_engine.js"></script><script src="pipeline.js"></script>
+  <script src="depth_engine.js"></script>
+  <script src="refs/style_refs.js"></script>
+  <script src="gemini_engine.js"></script><script src="aigen_client.js"></script>
+  
+  
+  
+  <script src="pc_gpu.js"></script><script src="pc_styles.js"></script><script src="pc_4d.js"></script><script src="pc_scan.js"></script><script src="pc_scan_gl.js"></script><script src="pc_precise.js"></script>
+  <script src="layer_comp.js"></script>
+  <script src="control.js"></script>
+  <script src="netcam_hub.js"></script>
+  <script src="deck_ui.js"></script>
+  <script src="proj_view.js"></script>
+  <script src="chaos_fx.js"></script>
+  <script src="trace_rec.js"></script>
+  <script src="vendor/webmidi.iife.min.js"></script><script src="midi_learn.js"></script><script src="syphon_out.js"></script>
+  <script>
+    // ===== visual runtime (reads engine state; never changes engine logic) =====
+    (function(){
+      var $i = function(id){ return document.getElementById(id); };
+      // SETTINGS drawer close -> same toggle as ⚙ / [S]
+      var st=$i('setToggle'); if(st) st.onclick=function(){ var g=$i('gear'); if(g) g.click(); };
+      // right column tabs: INSPECTOR | SETTINGS (settings visibility is still control.js's #panel.hidden toggle via #gear / [S])
+      var panel=$i('panel'), gear=$i('gear'), tabs=[].slice.call(document.querySelectorAll('.rtab'));
+      function syncTabs(){ var set=panel && !panel.classList.contains('hidden'); tabs.forEach(function(t){ t.classList.toggle('on',(t.dataset.rt==='set')===!!set); }); }
+      tabs.forEach(function(t){ t.onclick=function(){ var want=t.dataset.rt==='set', now=panel && !panel.classList.contains('hidden'); if(want!==!!now && gear) gear.click(); syncTabs(); }; });
+      if(panel) new MutationObserver(syncTabs).observe(panel,{attributes:true,attributeFilter:['class']}); syncTabs();
+      // MAP ▸ = edit mapping right on the MIX monitor (projector not required)
+      var mm=$i('mapmon'); if(mm) mm.onclick=function(){ if(window.__deckMapEdit) window.__deckMapEdit(); };
+      // ---- resizable panels (Premiere-style gutters), remembered per machine ----
+      var LS='hvft_layout_v1', DEF={wL:540,wC:400,hMix:380,hAud:128}, lay={wL:540,wC:400,hMix:380,hAud:128};
+      try{ var sv=JSON.parse(localStorage.getItem(LS)||'null'); if(sv) for(var k in sv) if(typeof sv[k]==='number') lay[k]=sv[k]; }catch(e){}
+      var mr=$i('mainrow'), cl=$i('colL'), stg=$i('stage');
+      function fitStage(){ if(!stg) return; var pb=stg.parentNode; var w=pb.clientWidth-16, h=pb.clientHeight-16; if(w<=0||h<=0) return; var sw=Math.max(80,Math.min(w,h*16/9)); stg.style.width=sw+'px'; stg.style.height=(sw*9/16)+'px'; }
+      function clampLay(){ var W=mr?mr.clientWidth:1800, H=cl?cl.clientHeight:900;
+        lay.wL=Math.max(300,Math.min(lay.wL,W-lay.wC-520)); lay.wC=Math.max(320,Math.min(lay.wC,W-lay.wL-520));
+        lay.hAud=Math.max(84,Math.min(lay.hAud,H-lay.hMix-140)); lay.hMix=Math.max(170,Math.min(lay.hMix,H-lay.hAud-140)); }
+      function applyLay(){ clampLay(); if(mr){ mr.style.setProperty('--wL',lay.wL+'px'); mr.style.setProperty('--wC',lay.wC+'px'); } if(cl){ cl.style.setProperty('--hMix',lay.hMix+'px'); cl.style.setProperty('--hAud',lay.hAud+'px'); } fitStage(); }
+      function saveLay(){ try{ localStorage.setItem(LS,JSON.stringify(lay)); }catch(e){} }
+      [].slice.call(document.querySelectorAll('.vgut,.hgut')).forEach(function(g){
+        var key={L:'wL',C:'wC',mix:'hMix',aud:'hAud'}[g.dataset.g], vert=g.classList.contains('vgut');
+        g.addEventListener('pointerdown',function(e){ var s0=lay[key], p0=vert?e.clientX:e.clientY; g.classList.add('drag'); document.body.classList.add('resizing'); document.body.style.cursor=vert?'col-resize':'row-resize';
+          try{ g.setPointerCapture(e.pointerId); }catch(er){}
+          function mv(ev){ var d=(vert?ev.clientX:ev.clientY)-p0; lay[key]= key==='hAud' ? s0-d : s0+d; applyLay(); }
+          function up(){ g.classList.remove('drag'); document.body.classList.remove('resizing'); document.body.style.cursor=''; g.removeEventListener('pointermove',mv); g.removeEventListener('pointerup',up); saveLay(); }
+          g.addEventListener('pointermove',mv); g.addEventListener('pointerup',up); e.preventDefault(); });
+        g.addEventListener('dblclick',function(){ lay[key]=DEF[key]; applyLay(); saveLay(); });
+      });
+      applyLay(); window.addEventListener('resize',applyLay);
+      try{ new ResizeObserver(fitStage).observe(stg.parentNode); }catch(e){}
+      // 1–4 select channel · M = mic
+      window.addEventListener('keydown', function(e){ var t=e.target; if(t && (/INPUT|TEXTAREA|SELECT/.test(t.tagName) || t.isContentEditable)) return;
+        var k=(e.key||'').toLowerCase(), n=parseInt(k,10);
+        if(n>=1&&n<=4&&window.__deckSelect){ window.__deckSelect(n-1); }
+        else if(k==='m'){ var m=$i('mic'); if(m){ m.click(); e.preventDefault(); } } });
+      // transport gauges
+      try { if (window.__hvftEnhance) window.__hvftEnhance($i('topbar')); } catch(e){}
+      var gIns=[$i('audamt'),$i('mFade')].filter(Boolean), last=gIns.map(function(i){return i.value;});
+      // MIC armed state (from control.js class/flag)
+      var mic=$i('mic'), micStat=$i('micStat'), ain=$i('audioin');
+      function armed(){ return !!window.HVFT_MIC_ON || (mic && mic.classList.contains('on')); }
+      function syncMic(){ var a=armed(); if(mic) mic.classList.toggle('armed',a);
+        if(micStat){ micStat.textContent = a ? '● ARMED · [M]' : (/denied/i.test(mic&&mic.textContent||'') ? '✕ MIC DENIED' : '○ DISARMED · [M]'); micStat.classList.toggle('on',a); }
+        if(ain){ ain.classList.toggle('armed',a); ain.classList.toggle('disarmed',!a); } }
+      if(mic) new MutationObserver(syncMic).observe(mic,{attributes:true,childList:true,characterData:true,subtree:true});
+      // BPM / TAP (local tempo readout)
+      var taps=[], bpmEl=$i('bpmVal'), tap=$i('tapBtn'), bpm=128;
+      if(tap){ tap.onclick=function(){ var now=performance.now(); taps.push(now); taps=taps.filter(function(x){return now-x<2000;});
+        if(taps.length>=2){ var s=0; for(var i=1;i<taps.length;i++) s+=taps[i]-taps[i-1]; bpm=Math.max(40,Math.min(240,60000/(s/(taps.length-1)))); if(bpmEl) bpmEl.textContent=bpm.toFixed(1); } }; }
+      var rows=[].slice.call(document.querySelectorAll('#meters .mrow')), tm=[].slice.call(document.querySelectorAll('#topMeters i s'));
+      var fpsEl=$i('tFps'), inEl=$i('tIn'), runEl=$i('tRun'), chEl=$i('tCh'), led=$i('beatLed');
+      var stage=$i('stage'), pLive=$i('pgmLive'), pBlack=$i('pgmBlack'), pInfo=$i('pgmInfo');
+      var t0=performance.now(), frames=0, fpsT=t0, fps=0, sm={low:0,mid:0,high:0}, beatUntil=0, lastM=0, nextBeat=0;
+      function band(){ var b=(typeof pipe!=='undefined' && pipe && pipe.band) || window.HVFT_AUDIO || null; if(!b) return {low:0,mid:0,high:0};
+        return { low:+(b.low!=null?b.low:b[0])||0, mid:+(b.mid!=null?b.mid:b[1])||0, high:+(b.high!=null?b.high:b[2])||0 }; }
+      function db(v){ return v<=0.001 ? -60 : Math.max(-60, Math.min(0, 20*Math.log10(v))); }
+      function links(){ var c={low:0,mid:0,high:0}; try{ ((window.__deck&&window.__deck.layers)||[]).forEach(function(L){ var o=L.fxLinks||{}; Object.keys(o).forEach(function(k){ var b=o[k]&&o[k].band; if(c[b]!=null) c[b]++; }); var g=L.strobe; if(g&&g.on&&c[g.band]!=null) c[g.band]++; }); }catch(e){} return c; }
+      function tick(now){
+        frames++; if(now-fpsT>=500){ fps=frames*1000/(now-fpsT); if(fpsEl) fpsEl.textContent=fps.toFixed(1); frames=0; fpsT=now; }
+        var s=Math.floor((now-t0)/1000); if(runEl) runEl.textContent=[s/3600|0,(s/60|0)%60,s%60].map(function(x){return (x<10?'0':'')+x;}).join(':');
+        gIns.forEach(function(i,k){ if(i.value!==last[k]){ last[k]=i.value; if(i._draw) i._draw(); } });
+        if(now-lastM>90){ lastM=now;
+          var a=armed(), b=a?band():{low:0,mid:0,high:0}, lk=links();
+          ['low','mid','high'].forEach(function(k){ sm[k]=Math.max(b[k], sm[k]*0.82); });
+          rows.forEach(function(r){ var k=r.dataset.b, v=Math.max(0,Math.min(1,sm[k])); var cv=r.querySelector('.mseg');
+            if(window.__hvftDrawSeg && cv) window.__hvftDrawSeg(cv,(db(v)+60)/60,a?'':'inert');
+            var d=r.querySelector('.mdb'); if(d) d.textContent = a ? db(v).toFixed(1)+'dB' : '—';
+            var l=r.querySelector('.mlk'); if(l) l.textContent = lk[k] ? '◎ '+lk[k]+(lk[k]>1?' LINKS':' LINK') : ''; });
+          tm.forEach(function(el,i){ var k=['low','mid','high'][i]; el.style.height=Math.round(Math.max(0,Math.min(1,(db(sm[k])+60)/60))*100)+'%'; el.style.background=a?'#F2A03D':'#4A4A4A'; });
+          var pk=Math.max(sm.low,sm.mid,sm.high); if(inEl){ inEl.textContent=a?db(pk).toFixed(1)+'dB':'NO SIG'; inEl.classList.toggle('acc',a); }
+          var on=(typeof pipe!=='undefined'&&pipe&&pipe.onset)||0; if(a&&on>0.5) beatUntil=now+90;
+          // PROGRAM status
+          var Ls=(window.__deck&&window.__deck.layers)||[], anyS=Ls.some(function(L){return L.solo&&L.on!==false;});
+          var act=Ls.filter(function(L){ return L.on!==false && !L.bypass && (!anyS||L.solo); });
+          var pat=(act.find(function(L){return L.bgfx&&L.bgfx!=='none';})||{}).bgfx;
+          var lvl=(window.HVFT_MASTER&&typeof window.HVFT_MASTER.level==='number')?window.HVFT_MASTER.level:1, black=lvl<=0.001;
+          if(chEl) chEl.textContent=act.length+'/4';
+          if(pInfo) pInfo.textContent=fps.toFixed(1)+' FPS · '+act.length+'/4 CH · '+(pat?pat.toUpperCase():'NO PATTERN');
+          if(pLive){ pLive.textContent=black?'■ BLACK':'● LIVE'; pLive.classList.toggle('live',!black); }
+          if(pBlack) pBlack.classList.toggle('on',black);
+          if(stage) stage.classList.toggle('live',!black && act.length>0);
+        }
+        if(!armed() && now>nextBeat){ nextBeat=now+60000/bpm; beatUntil=now+80; }
+        if(led) led.classList.toggle('on', now<beatUntil);
+        requestAnimationFrame(tick);
+      }
+      syncMic(); requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>

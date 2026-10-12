@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>HVFT VISION — OUTPUT</title>
+<style>
+  html,body { margin:0; height:100%; background:#000; overflow:hidden; cursor:none;
+    font-family:'JetBrains Mono',ui-monospace, Menlo, monospace; }
+  #view { position:absolute; inset:0; width:100%; height:100%; z-index:0; visibility:hidden; }
+  #map  { position:absolute; inset:0; width:100%; height:100%; z-index:1; display:block; }
+  body.edit { cursor:default; }
+  .handle { position:absolute; width:46px; height:46px; margin:-23px 0 0 -23px; border:3px solid #F2A03D;
+    border-radius:50%; background:#F2A03D33; box-shadow:0 0 0 1px #000, 0 0 14px #000a; z-index:3; display:none; cursor:grab; }
+  .handle::before, .handle::after { content:''; position:absolute; background:#F2A03D; }
+  .handle::before { left:50%; top:7px; bottom:7px; width:2px; margin-left:-1px; }
+  .handle::after { top:50%; left:7px; right:7px; height:2px; margin-top:-1px; }
+  .handle.selc { background:#F2A03D77; border-color:#fff; box-shadow:0 0 0 2px #fff, 0 0 18px #F2A03D; }
+  .handle b { position:absolute; left:54px; top:10px; color:#F2A03D;
+    font:700 14px 'Orbitron','Audiowide', ui-monospace, Menlo, monospace; letter-spacing:.1em;
+    background:#000b; padding:3px 8px; white-space:nowrap;
+    clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px); }
+  body.edit .handle { display:block; }
+  /* brand watermark while editing */
+  #obrand { position:absolute; right:16px; bottom:12px; z-index:4; display:none; align-items:baseline; gap:.5rem;
+    color:#F2A03D; opacity:.85; pointer-events:none; }
+  #obrand .h { font:900 20px 'Orbitron','Audiowide', ui-monospace, monospace; letter-spacing:.05em; transform:skewX(-12deg); }
+  #obrand .s { font:700 9px 'Orbitron','Audiowide', ui-monospace, monospace; letter-spacing:.5em; color:#8A8A8A; }
+  body.edit #obrand { display:flex; }
+  #maptip { position:absolute; left:14px; top:12px; color:#E8E8E8; z-index:4; display:none;
+    font:600 13px/1.6 ui-monospace, Menlo, monospace; letter-spacing:.04em;
+    background:#0A0A0Aee; padding:10px 12px; border:1px solid #F2A03D; max-width:70%;
+    clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px); }
+  #maptip b { color:#F2A03D; font-family:'Orbitron','Audiowide',ui-monospace,monospace; font-weight:700; letter-spacing:.14em; }
+  body.edit #maptip { display:block; }
+  #maptools { position:absolute; left:14px; top:82px; z-index:6; display:none; gap:8px; flex-wrap:wrap; max-width:70%; }
+  body.edit #maptools { display:flex; }
+  #maptools button { font:700 14px 'Orbitron','Audiowide', ui-monospace, Menlo, monospace; letter-spacing:.1em;
+    color:#0A0A0A; background:#F2A03D; border:none; padding:10px 15px; cursor:pointer;
+    clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); }
+  #maptools button:hover { background:#FFC47A; }
+  #maptools button:active { background:#fff; }
+</style>
+  <link rel="stylesheet" href="hud_fonts.css">
+  <link rel="stylesheet" href="fonts.css">
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <canvas id="map"></canvas>
+  <div class="handle" data-i="0"><b>1 top-left</b></div>
+  <div class="handle" data-i="1"><b>2 top-right</b></div>
+  <div class="handle" data-i="2"><b>3 bottom-right</b></div>
+  <div class="handle" data-i="3"><b>4 bottom-left</b></div>
+  <div id="obrand"><span class="h">HVFT</span><span class="s">VISION</span></div>
+  <div id="maptip"><b>MAP MODE</b> · drag the 4 points to the surface corners · [M] done · [R] reset · [Esc] close</div>
+  <div id="maptools">
+    <button data-mt="f">FILL / CROP</button>
+    <button data-mt="s">SOURCE</button>
+    <button data-mt="next">SURFACE ▸</button>
+    <button data-mt="a">+ ADD</button>
+    <button data-mt="backspace">− DELETE</button>
+    <button data-mt="r">RESET</button>
+    <button data-mt="m">DONE</button>
+  </div>
+  <script src="vendor/meyda.min.js"></script><script src="audio_in.js"></script>
+  <script src="effects.js"></script><script src="txt_fx2.js"></script>
+  <script src="bg_tangle.js"></script>
+  <script src="bg_more.js"></script>
+  <script src="bg_flash.js"></script><script src="vendor/butterchurn.min.js"></script><script src="vendor/butterchurnPresets.min.js"></script><script src="vendor/butterchurnPresetsExtra.min.js"></script><script src="bg_milkdrop.js"></script><script src="vendor/isf.js"></script><script src="isf_pack.js"></script><script src="isf_fx.js"></script>
+  <script src="fx_extra.js"></script>
+  <script src="plexus_engine.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script><script>try { ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/"; ort.env.wasm.numThreads = 1 } catch (e) {}</script><script src="rvm_engine.js"></script><script src="pipeline.js"></script>
+  <script src="pc_gpu.js"></script>
+  <script src="pc_styles.js"></script>
+  <script src="pc_4d.js"></script>
+  <script src="pc_scan.js"></script>
+  <script src="pc_scan_gl.js"></script><script src="pc_precise.js"></script>
+  <script src="layer_comp.js"></script>
+  <script src="output.js"></script>
+</body>
+</html>

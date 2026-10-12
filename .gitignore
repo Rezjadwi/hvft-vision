@@ -1,0 +1,22 @@
+# dependencies & builds
+node_modules/
+dist/
+ai_service/.venv/
+__pycache__/
+*.pyc
+
+# runtime data (personal / machine-specific)
+logs/
+presets/
+media/drops/
+
+# backups made while editing (e.g. main.js.preaigen, deck_ui.js.prech3fix)
+*.pre[a-z0-9]*
+*.prev[0-9]*
+*.bak
+*.bak2
+*.hvftbak
+*.paperfail
+
+# macOS
+.DS_Store

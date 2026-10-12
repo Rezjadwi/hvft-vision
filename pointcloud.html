@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>HVFT VISION — POINT CLOUD (GPU)</title>
+<style>
+  :root { --line:#2A2A2A; --dim:#8A8A8A; --acc:#F2A03D; }
+  * { box-sizing:border-box }
+  html,body { margin:0; height:100%; background:#000; color:#E8E8E8;
+    font:12px/1.35 ui-monospace, Menlo, monospace; overflow:hidden }
+  #gl { position:absolute; inset:0; width:100%; height:100%; display:block }
+  #hud { position:absolute; left:14px; top:12px; color:var(--dim); letter-spacing:.06em;
+    text-transform:uppercase; font-size:11px; pointer-events:none }
+  #hud b { color:#E8E8E8; font-weight:600 }
+  #ui { position:absolute; right:12px; top:12px; width:236px; max-height:calc(100% - 24px);
+    overflow:auto; background:rgba(10,10,10,.9); border:1px solid var(--line);
+    border-radius:10px; padding:10px }
+  h4 { margin:0 0 8px; font-size:11px; letter-spacing:.14em; color:var(--dim); text-transform:uppercase }
+  .fld { display:flex; justify-content:space-between; margin:9px 0 3px; font-size:10.5px;
+    letter-spacing:.1em; color:var(--dim); text-transform:uppercase }
+  .v { color:#E8E8E8 }
+  .row { display:flex; gap:5px; flex-wrap:wrap }
+  button { flex:1; min-width:60px; background:#171717; color:#E8E8E8; border:1px solid var(--line);
+    border-radius:6px; padding:6px 4px; font:inherit; font-size:11px; cursor:pointer }
+  button:hover { border-color:#4A4A4A }
+  button.on { background:var(--acc); border-color:var(--acc); color:#111; font-weight:600 }
+  input[type=range] { width:100%; accent-color:var(--acc); margin:0 }
+  .sep { height:1px; background:var(--line); margin:11px 0 }
+</style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="hud">HVFT // POINT CLOUD GPU · <b id="src">menunggu depth…</b> · <span id="pts">0</span> titik · <span id="fps">0</span> fps</div>
+  <div id="ui">
+    <h4>Sumber Kedalaman</h4>
+    <div class="row" id="dsrc">
+      <button data-m="lidar" class="on">LiDAR</button>
+      <button data-m="depthai">Depth-AI</button>
+    </div>
+
+    <div class="sep"></div>
+    <h4>Bentuk</h4>
+    <div class="fld">KERAPATAN KOLOM <span class="v" id="dxv">3.4</span></div>
+    <input id="dx" type="range" min="5" max="40" value="34" />
+    <div class="fld">JARAK BARIS (scanline) <span class="v" id="dyv">1.12</span></div>
+    <input id="dy" type="range" min="15" max="150" value="112" />
+    <div class="fld">UKURAN TITIK <span class="v" id="psv">5.2</span></div>
+    <input id="ps" type="range" min="5" max="90" value="52" />
+    <div class="fld">GLOW <span class="v" id="gwv">1.76</span></div>
+    <input id="gw" type="range" min="20" max="260" value="176" />
+
+    <div class="sep"></div>
+    <h4>Kedalaman</h4>
+    <div class="fld">POTONG JAUH (m) <span class="v" id="fcv">6.0</span></div>
+    <input id="fc" type="range" min="10" max="80" value="60" />
+    <div class="fld">POTONG LATAR <span class="v" id="dcv">3%</span></div>
+    <input id="dc" type="range" min="0" max="95" value="3" />
+    <div class="row"><button id="flipy">Balik Y</button><button id="fitbtn">Pas ke titik</button></div>
+
+    <div class="sep"></div>
+    <h4>Warna</h4>
+    <div class="row" id="col">
+      <button data-c="blue">Biru</button>
+      <button data-c="white">Putih</button>
+      <button data-c="rgbcam" class="on">Kamera</button>
+    </div>
+
+    <div class="sep"></div>
+    <h4>Audio</h4>
+    <div class="row"><button id="aud">Audio OFF</button><button id="wave">Wave</button></div>
+    <div class="row"><button id="glitch" class="on">Glitch</button><button id="ledak">Ledak</button></div>
+    <div class="fld">REAKSI <span class="v" id="arv">0.70</span></div>
+    <input id="ar" type="range" min="0" max="200" value="70" />
+
+    <div class="sep"></div>
+    <div class="row"><button id="spin">Auto-orbit</button><button id="freeze">Beku</button></div>
+    <div class="row"><button id="full">Layar Penuh</button><button id="hideui">Sembunyikan UI</button></div>
+  </div>
+
+<script src="audio_in.js"></script>
+<script>
+const $ = id => document.getElementById(id)
+const cv = $('gl')
+const gl = cv.getContext('webgl', { antialias: true, alpha: false, preserveDrawingBuffer: false })
+
+const S = {
+  srcMode: 'lidar', densX: 3.4, densY: 1.12, pointSize: 5.2, glow: 1.76,
+  farCut: 6.0, depthCut: 0.03, flipY: false, color: 'rgbcam',
+  audio: false, wave: false, glitch: true, disperse: false, react: 0.70,
+  spin: false, freeze: false
+}
+
+// ---------- cek kemampuan: vertex texture fetch (inti pendekatan TouchDesigner) ----------
+const VTF = gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS)
+if (!VTF) $('src').textContent = 'GPU tak mendukung vertex texture fetch'
+
+// ---------- shader ----------
+const VS = `
+precision highp float;
+attribute vec2 aUV;
+uniform sampler2D uDepth;
+uniform sampler2D uCol;
+uniform vec2 uDSize;
+uniform vec2 uRange;      // lo, hi (meter)
+uniform vec4 uIntr;       // fx, fy, cx, cy
+uniform mat4 uMVP;
+uniform float uPointSize, uFlipY, uTime;
+uniform float uBass, uOnset, uReact;
+uniform float uWave, uGlitch, uDisperse;
+uniform vec3 uCenter;
+varying float vT;
+varying float vA;
+varying vec3 vC;
+float h11 (float p) { return fract(sin(p * 127.1) * 43758.5453); }
+void main () {
+  vec4 t = texture2D(uDepth, aUV);
+  vA = t.a;
+  vT = t.r;
+  vC = texture2D(uCol, aUV).rgb;
+  float z = uRange.x + t.r * (uRange.y - uRange.x);
+  vec2 px = aUV * uDSize;
+  float X = (px.x - uIntr.z) / uIntr.x * z;
+  float Y = (px.y - uIntr.w) / uIntr.y * z;
+  Y = mix(-Y, Y, uFlipY);
+  vec3 P = vec3(X, Y, z);
+  // riak kedalaman
+  P.z += sin((P.x + P.y) * 5.0 + uTime * 4.0) * uBass * uReact * 0.12 * uWave;
+  // slab baris bergeser horizontal saat hentakan
+  float row = floor(aUV.y * 46.0);
+  float g = h11(row + floor(uTime * 6.0) * 13.0) - 0.5;
+  P.x += g * uOnset * uReact * 0.55 * uGlitch;
+  // ledak radial
+  vec3 d = P - uCenter;
+  float dl = max(0.0001, length(d));
+  float psh = (uBass * 0.7 + uOnset * 0.5) * uReact * 0.45 * uDisperse;
+  P += d / dl * psh * (0.4 + h11(aUV.x * 91.7 + aUV.y * 37.3));
+  gl_Position = uMVP * vec4(P, 1.0);
+  gl_PointSize = uPointSize * (1.0 + uOnset * 0.8 * uReact) / max(0.25, gl_Position.w);
+  if (vA < 0.45) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);   // buang piksel tak valid
+}`
+const FS = `
+precision mediump float;
+varying float vT;
+varying float vA;
+varying vec3 vC;
+uniform int uMode;
+uniform float uGlow;
+void main () {
+  vec2 d = gl_PointCoord - vec2(0.5);
+  float r = length(d) * 2.0;
+  if (r > 1.0) discard;
+  float a = pow(1.0 - r, 1.7);
+  vec3 nearC = vec3(0.88, 0.94, 1.00);
+  vec3 farC  = vec3(0.14, 0.26, 0.96);
+  vec3 c = mix(nearC, farC, pow(vT, 1.3));
+  if (uMode == 1) c = vec3(1.0);
+  else if (uMode == 2) c = vC;
+  gl_FragColor = vec4(c * a * uGlow, a);
+}`
+function sh (ty, src) {
+  const s = gl.createShader(ty); gl.shaderSource(s, src); gl.compileShader(s)
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s))
+  return s
+}
+const prog = gl.createProgram()
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS))
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS))
+gl.linkProgram(prog)
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog))
+gl.useProgram(prog)
+const A_UV = gl.getAttribLocation(prog, 'aUV')
+const U = n => gl.getUniformLocation(prog, n)
+const uDepth = U('uDepth'), uCol = U('uCol'), uDSize = U('uDSize'), uRange = U('uRange')
+const uIntr = U('uIntr'), uMVP = U('uMVP'), uPointSize = U('uPointSize'), uFlipY = U('uFlipY')
+const uTime = U('uTime'), uBass = U('uBass'), uOnset = U('uOnset'), uReact = U('uReact')
+const uWave = U('uWave'), uGlitch = U('uGlitch'), uDisperse = U('uDisperse')
+const uCenter = U('uCenter'), uMode = U('uMode'), uGlow = U('uGlow')
+
+// ---------- tekstur depth + warna ----------
+function mkTex () {
+  const t = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, t)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  return t
+}
+const texD = mkTex(), texC = mkTex()
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1)   // baris RGB 3-byte tidak selalu kelipatan 4
+let dBuf = null, cBuf = null, dW = 0, dH = 0
+let lo = 0.3, hi = 4.0, emaLo = null, emaHi = null
+let bounds = null, fitPending = true
+
+// ---------- grid titik (sekali bikin, bukan tiap frame) ----------
+const uvBuf = gl.createBuffer()
+let gridW = 0, gridH = 0, nPts = 0
+function ensureGrid (gw, gh) {
+  if (gw === gridW && gh === gridH) return
+  gridW = gw; gridH = gh; nPts = gw * gh
+  const arr = new Float32Array(nPts * 2)
+  let k = 0
+  for (let j = 0; j < gh; j++) {
+    const v = (j + 0.5) / gh
+    for (let i = 0; i < gw; i++) { arr[k++] = (i + 0.5) / gw; arr[k++] = v }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf)
+  gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW)
+}
+
+// ---------- depth masuk ----------
+let live = null
+if (window.hvft && window.hvft.onDepthFrame) {
+  window.hvft.onDepthFrame(f => {
+    const isAi = !!f.ai
+    if (S.srcMode === 'lidar' && isAi) return
+    if (S.srcMode === 'depthai' && !isAi) return
+    if (S.freeze && live) return
+    live = { w: f.w, h: f.h, fx: f.fx, fy: f.fy, cx: f.cx, cy: f.cy,
+      depth: new Uint16Array(f.depth), rgb: f.rgb ? new Uint8Array(f.rgb) : null }
+    $('src').textContent = (isAi ? 'DEPTH-AI' : 'LiDAR') + ' ' + f.w + 'x' + f.h
+  })
+  if (window.hvft.onDepthState) window.hvft.onDepthState(s => { if (!live) $('src').textContent = s })
+}
+
+// CPU hanya satu lintasan ringan: normalisasi + unggah tekstur. Sisanya GPU.
+function uploadDepth () {
+  if (!live) return false
+  const w = live.w, h = live.h, dep = live.depth, far = S.farCut
+  if (w !== dW || h !== dH) {
+    dW = w; dH = h
+    dBuf = new Uint8Array(w * h * 4)
+    cBuf = new Uint8Array(w * h * 3)
+  }
+  let mn = 1e9, mx = -1e9
+  for (let i = 0; i < w * h; i++) {
+    const z = dep[i] / 1000
+    if (z > 0.05 && z <= far) { if (z < mn) mn = z; if (z > mx) mx = z }
+  }
+  if (!(mx - mn > 0.03)) { mn = 0.3; mx = far }
+  emaLo = emaLo == null ? mn : emaLo + (mn - emaLo) * 0.25
+  emaHi = emaHi == null ? mx : emaHi + (mx - emaHi) * 0.25
+  lo = emaLo; hi = Math.max(emaHi, lo + 0.05)
+  const span = hi - lo
+  const cut = S.depthCut
+  let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9, any = 0
+  for (let i = 0; i < w * h; i++) {
+    const z = dep[i] / 1000
+    let ok = (z > 0.05 && z <= far) ? 1 : 0
+    let zn = 0
+    if (ok) {
+      zn = (z - lo) / span
+      zn = zn < 0 ? 0 : zn > 1 ? 1 : zn
+      if ((1 - zn) < cut) ok = 0            // buang yang jauh (latar)
+    }
+    const p = i * 4
+    dBuf[p] = (zn * 255) | 0; dBuf[p + 1] = 0; dBuf[p + 2] = 0; dBuf[p + 3] = ok ? 255 : 0
+    if (ok) {
+      const x = i % w, y = (i / w) | 0
+      if (x < bx0) bx0 = x; if (x > bx1) bx1 = x
+      if (y < by0) by0 = y; if (y > by1) by1 = y
+      any++
+    }
+    if (live.rgb) { cBuf[i * 3] = live.rgb[i * 3]; cBuf[i * 3 + 1] = live.rgb[i * 3 + 1]; cBuf[i * 3 + 2] = live.rgb[i * 3 + 2] }
+  }
+  gl.bindTexture(gl.TEXTURE_2D, texD)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, dBuf)
+  gl.bindTexture(gl.TEXTURE_2D, texC)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, w, h, 0, gl.RGB, gl.UNSIGNED_BYTE, cBuf)
+  if (any > 40) {
+    const zc = (lo + hi) / 2
+    const Xa = (bx0 - live.cx) / live.fx * zc, Xb = (bx1 - live.cx) / live.fx * zc
+    const Ya = -(by1 - live.cy) / live.fy * zc, Yb = -(by0 - live.cy) / live.fy * zc
+    const rad = Math.max(0.3, 0.5 * Math.hypot(Xb - Xa, Yb - Ya, hi - lo))
+    bounds = { cx: (Xa + Xb) / 2, cy: (Ya + Yb) / 2, cz: zc, rad }
+  }
+  return true
+}
+
+// ---------- matriks + kamera ----------
+function mat4Mul (a, b) {
+  const o = new Float32Array(16)
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++)
+    o[i * 4 + j] = a[j] * b[i * 4] + a[4 + j] * b[i * 4 + 1] + a[8 + j] * b[i * 4 + 2] + a[12 + j] * b[i * 4 + 3]
+  return o
+}
+function perspective (fovy, aspect, near, far) {
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far)
+  return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0])
+}
+function lookAt (ex, ey, ez, cx, cy, cz) {
+  let zx = ex - cx, zy = ey - cy, zz = ez - cz
+  const zl = Math.hypot(zx, zy, zz) || 1; zx /= zl; zy /= zl; zz /= zl
+  let sx = zz, sy = 0, sz = -zx
+  const sl = Math.hypot(sx, sy, sz) || 1; sx /= sl; sy /= sl; sz /= sl
+  const tx = sy * zz - sz * zy, ty = sz * zx - sx * zz, tz = sx * zy - sy * zx
+  return new Float32Array([sx, tx, zx, 0, sy, ty, zy, 0, sz, tz, zz, 0,
+    -(sx * ex + sy * ey + sz * ez), -(tx * ex + ty * ey + tz * ez), -(zx * ex + zy * ey + zz * ez), 1])
+}
+const cam = { yaw: 0, pitch: 0, dist: 3.2, tx: 0, ty: -0.1, tz: 2.0 }
+let drag = false, lx = 0, ly = 0
+cv.addEventListener('mousedown', e => { drag = true; lx = e.clientX; ly = e.clientY })
+window.addEventListener('mouseup', () => { drag = false })
+window.addEventListener('mousemove', e => {
+  if (!drag) return
+  cam.yaw += (e.clientX - lx) * 0.008
+  cam.pitch = Math.max(-1.4, Math.min(1.4, cam.pitch + (e.clientY - ly) * 0.008))
+  lx = e.clientX; ly = e.clientY
+})
+cv.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(0.5, Math.min(12, cam.dist * (1 + e.deltaY * 0.001))) }, { passive: false })
+function fitCamera () {
+  if (!bounds) return
+  cam.tx = bounds.cx; cam.ty = bounds.cy; cam.tz = bounds.cz
+  cam.dist = Math.max(0.5, Math.min(12, bounds.rad / 0.82))
+}
+
+// ---------- audio ----------
+let AN = null, SPEC = null, PREV = null, onset = 0, bass = 0
+async function initAudio () {
+  try {
+    const AI = window.HVFT_AUDIO_IN
+    const ac = new (window.AudioContext || window.webkitAudioContext)()
+    AN = ac.createAnalyser(); AN.fftSize = 1024; AN.smoothingTimeConstant = 0.6
+    if (AI) { const o = await AI.open(); AI.route(ac, o.stream, o.cfg).connect(AN) }
+    else { const st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }); ac.createMediaStreamSource(st).connect(AN) }
+    SPEC = new Uint8Array(AN.frequencyBinCount); PREV = new Uint8Array(AN.frequencyBinCount)
+    return true
+  } catch (e) { return false }
+}
+function stepAudio () {
+  if (!AN) { onset = 0; bass = 0; return }
+  AN.getByteFrequencyData(SPEC)
+  const n = SPEC.length
+  let flux = 0, low = 0, ln = 0
+  for (let i = 0; i < n; i++) {
+    const df = SPEC[i] - PREV[i]; if (df > 0) flux += df
+    if (i < n * 0.12) { low += SPEC[i]; ln++ }
+  }
+  PREV.set(SPEC)
+  onset = Math.max(onset * 0.86, Math.min(1, flux / (n * 22)))
+  bass = ln ? (low / ln) / 255 : 0
+}
+
+// ---------- loop ----------
+gl.disable(gl.DEPTH_TEST)
+gl.enable(gl.BLEND)
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE)        // aditif -> glow menumpuk (kunci look TouchDesigner)
+gl.clearColor(0, 0, 0, 1)
+const MODE = { blue: 0, white: 1, rgbcam: 2 }
+let t0 = performance.now(), frames = 0, lastFps = t0
+function resize () {
+  const dpr = Math.min(2, devicePixelRatio || 1)
+  const w = cv.clientWidth * dpr | 0, h = cv.clientHeight * dpr | 0
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; gl.viewport(0, 0, w, h) }
+}
+function frame () {
+  resize()
+  const t = (performance.now() - t0) / 1000
+  if (S.spin) cam.yaw += 0.003
+  if (S.audio) stepAudio(); else { onset = 0; bass = 0 }
+  gl.clear(gl.COLOR_BUFFER_BIT)
+  if (live && uploadDepth()) {
+    if (fitPending && bounds) { fitCamera(); fitPending = false }
+    ensureGrid(Math.max(8, Math.round(dW * S.densX)), Math.max(4, Math.round(dH * S.densY)))
+    gl.useProgram(prog)
+    const proj = perspective(1.0, cv.width / cv.height, 0.05, 60)
+    const ex = cam.tx + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist
+    const ey = cam.ty + Math.sin(cam.pitch) * cam.dist
+    const ez = cam.tz + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist
+    gl.uniformMatrix4fv(uMVP, false, mat4Mul(proj, lookAt(ex, ey, ez, cam.tx, cam.ty, cam.tz)))
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texD); gl.uniform1i(uDepth, 0)
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texC); gl.uniform1i(uCol, 1)
+    gl.uniform2f(uDSize, dW, dH)
+    gl.uniform2f(uRange, lo, hi)
+    gl.uniform4f(uIntr, live.fx, live.fy, live.cx, live.cy)
+    gl.uniform1f(uPointSize, S.pointSize * (cv.height / 540))
+    gl.uniform1f(uFlipY, S.flipY ? 1 : 0)
+    gl.uniform1f(uTime, t)
+    gl.uniform1f(uBass, bass); gl.uniform1f(uOnset, onset); gl.uniform1f(uReact, S.react)
+    gl.uniform1f(uWave, S.wave ? 1 : 0)
+    gl.uniform1f(uGlitch, S.glitch ? 1 : 0)
+    gl.uniform1f(uDisperse, S.disperse ? 1 : 0)
+    const b = bounds || { cx: 0, cy: 0, cz: 2 }
+    gl.uniform3f(uCenter, b.cx, b.cy, b.cz)
+    gl.uniform1i(uMode, MODE[S.color] ?? 0)
+    gl.uniform1f(uGlow, S.glow)
+    gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf)
+    gl.enableVertexAttribArray(A_UV)
+    gl.vertexAttribPointer(A_UV, 2, gl.FLOAT, false, 0, 0)
+    gl.drawArrays(gl.POINTS, 0, nPts)
+  }
+  frames++
+  if (performance.now() - lastFps > 500) {
+    $('fps').textContent = Math.round(frames * 1000 / (performance.now() - lastFps))
+    $('pts').textContent = nPts
+    frames = 0; lastFps = performance.now()
+  }
+  requestAnimationFrame(frame)
+}
+
+// ---------- UI ----------
+const sel = (id, b) => $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b))
+$('dsrc').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return
+  S.srcMode = b.dataset.m; sel('dsrc', b); live = null; fitPending = true
+  $('src').textContent = 'menunggu ' + (S.srcMode === 'depthai' ? 'DEPTH-AI' : 'LiDAR') + '…'
+  if (window.hvft && window.hvft.requestAiDepth) window.hvft.requestAiDepth(S.srcMode === 'depthai')
+}
+$('col').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.color = b.dataset.c; sel('col', b) }
+const SL = [
+  ['dx', 'densX', 'dxv', 10, v => (v / 10).toFixed(1)],
+  ['dy', 'densY', 'dyv', 100, v => (v / 100).toFixed(2)],
+  ['ps', 'pointSize', 'psv', 10, v => (v / 10).toFixed(1)],
+  ['gw', 'glow', 'gwv', 100, v => (v / 100).toFixed(2)],
+  ['fc', 'farCut', 'fcv', 10, v => (v / 10).toFixed(1)],
+  ['dc', 'depthCut', 'dcv', 100, v => v + '%'],
+  ['ar', 'react', 'arv', 100, v => (v / 100).toFixed(2)]
+]
+for (const [id, key, out, div, fmt] of SL) {
+  $(id).oninput = e => { S[key] = e.target.value / div; $(out).textContent = fmt(e.target.value) }
+}
+$('flipy').onclick = e => { S.flipY = !S.flipY; e.target.classList.toggle('on', S.flipY); fitPending = true }
+$('fitbtn').onclick = () => { fitPending = true }
+$('spin').onclick = e => { S.spin = !S.spin; e.target.classList.toggle('on', S.spin) }
+$('freeze').onclick = e => {
+  S.freeze = !S.freeze; e.target.classList.toggle('on', S.freeze)
+  e.target.textContent = S.freeze ? 'Beku: ON' : 'Beku'
+  if (S.freeze) { S.spin = true; $('spin').classList.add('on') }
+}
+$('wave').onclick = e => { S.wave = !S.wave; e.target.classList.toggle('on', S.wave) }
+$('glitch').onclick = e => { S.glitch = !S.glitch; e.target.classList.toggle('on', S.glitch) }
+$('ledak').onclick = e => { S.disperse = !S.disperse; e.target.classList.toggle('on', S.disperse) }
+$('aud').onclick = async e => {
+  if (!S.audio) {
+    if (!AN) { const ok = await initAudio(); if (!ok) { e.target.textContent = 'Mic ditolak'; return } }
+    S.audio = true; e.target.textContent = 'Audio ON'; e.target.classList.add('on')
+  } else { S.audio = false; e.target.textContent = 'Audio OFF'; e.target.classList.remove('on') }
+}
+$('full').onclick = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen() }
+const toggleUI = () => { const hide = $('ui').style.display !== 'none'; $('ui').style.display = hide ? 'none' : ''; $('hud').style.display = hide ? 'none' : '' }
+$('hideui').onclick = toggleUI
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase()
+  if (k === 'f') $('full').click()
+  else if (k === 'h') toggleUI()
+  else if (k === 'o') $('spin').click()
+  else if (k === 'g') $('fitbtn').click()
+})
+frame()
+</script>
+</body>
+</html>

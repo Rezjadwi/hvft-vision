@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>HVFT VISION — DECK</title>
+<style>
+  :root{--line:#282828;--dim:#8A8A8A;--acc:#F2A03D;--cell:#161616;}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0A0A0A;color:#E8E8E8;font:12px/1.35 ui-monospace,Menlo,monospace;overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100%}
+  #bar{display:flex;gap:6px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  #bar .sp{flex:1}
+  button{background:#191919;color:#E8E8E8;border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:inherit;font-size:11px;cursor:pointer}
+  button:hover{border-color:#4A4A4A}
+  button.on{background:var(--acc);border-color:var(--acc);color:#111;font-weight:600}
+  #grid{overflow:auto;border-bottom:1px solid var(--line);max-height:40%}
+  table{border-collapse:collapse}
+  td,th{border:1px solid var(--line);padding:0}
+  .lhead{min-width:150px;background:#101010;padding:7px;vertical-align:top}
+  .lhead .nm{font-weight:600;letter-spacing:.08em}
+  .lhead .row{display:flex;gap:4px;align-items:center;margin-top:5px;flex-wrap:wrap}
+  .lhead select,.lhead input[type=range]{background:#1A1A1A;color:#E8E8E8;border:1px solid var(--line);border-radius:4px;font:inherit;font-size:10px}
+  .lhead input[type=range]{width:90px;accent-color:var(--acc)}
+  .cell{width:96px;height:58px;background:var(--cell);cursor:pointer;position:relative;vertical-align:middle;text-align:center;color:#CFCFCF;font-size:10px;padding:2px}
+  .cell.empty{color:#3A3A3A}
+  .cell.active{outline:2px solid var(--acc);outline-offset:-2px;background:#241a0e}
+  .cell.selcell{box-shadow:inset 0 0 0 2px #4A90D9}
+  .cell .s{display:block;font-weight:600;color:#E8E8E8}
+  .cell .e{display:block;color:var(--dim);font-size:9px}
+  .colhead{background:#0E0E0E;color:var(--dim);text-align:center;font-size:10px;padding:4px}
+  #props{padding:8px 10px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-height:44px}
+  #props label{color:var(--dim);font-size:10px;text-transform:uppercase}
+  #props select,#props input[type=text]{background:#1A1A1A;color:#E8E8E8;border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;font-size:11px}
+  #props .hintp{color:var(--dim);font-size:10px}
+  #prev{flex:1;position:relative;background:#000;min-height:180px}
+  #dv{position:absolute;inset:0;width:100%;height:100%}
+  #hud{position:absolute;left:10px;top:8px;color:var(--dim);font-size:11px}
+</style>
+  <link rel="stylesheet" href="fonts.css">
+</head>
+<body>
+  <div id="app">
+    <div id="bar">
+      <b style="letter-spacing:.1em">HVFT DECK</b>
+      <button id="mic">Mic</button>
+      <button id="toOut" class="on">→ Output</button>
+      <button id="addLayer">+ Layer</button>
+      <button id="addCol">+ Kolom</button>
+      <button id="clearSel">Kosongkan sel</button>
+      <span class="sp"></span>
+      <span class="hintp" style="color:#8A8A8A">Klik sel = pilih & aktifkan · atur sumber/efek di bawah</span>
+    </div>
+    <div id="grid"></div>
+    <div id="props"><span class="hintp">Pilih sebuah sel untuk mengatur sumber & efeknya.</span></div>
+    <div id="prev"><canvas id="dv"></canvas><div id="hud">OUTPUT PREVIEW</div></div>
+  </div>
+  <script src="audio_in.js"></script>
+  <script src="effects.js"></script><script src="txt_fx2.js"></script>
+  <script src="pipeline.js"></script>
+  <script src="pc_gpu.js"></script>
+  <script src="pc_styles.js"></script>
+  <script src="pc_4d.js"></script>
+  <script src="pc_scan.js"></script>
+  <script src="pc_scan_gl.js"></script>
+  <script src="layer_comp.js"></script>
+  <script>
+  const $=id=>document.getElementById(id)
+  const comp=new LayerComp($('dv')); comp.setSize(1280,720)
+  let ctrl={color:'white',audio:{},hud:true,hudScale:0.7}; comp.setControl(ctrl)
+
+  const SRCS=[['cam','Kamera'],['lidar','LiDAR'],['depthai','Depth-AI'],['pc3d','PC-3D'],['media','Media'],['logo','Logo'],['text','Teks']]
+  const EFFS=(typeof HVFT_EFFECTS!=='undefined')?HVFT_EFFECTS.map(e=>[e.id,e.name]):[['none','Tanpa Efek']]
+  const BLENDS=[['normal','Normal'],['screen','Screen'],['add','Add'],['multiply','Multiply']]
+  const SRCLABEL=Object.fromEntries(SRCS)
+
+  function mkLayer(cols){ return { blend:'normal', opacity:1, on:true, active:-1, clips:Array(cols).fill(null) } }
+  let COLS=6
+  let deck={ layers:[ mkLayer(COLS), mkLayer(COLS), mkLayer(COLS) ] }  // layers[0] = DEPAN (atas)
+  let sel={li:0,ci:0}
+
+  function buildComp(){
+    const active=[]
+    for(let i=deck.layers.length-1;i>=0;i--){ const L=deck.layers[i]; const c=(L.active>=0)?L.clips[L.active]:null
+      if(c&&L.on!==false) active.push(Object.assign({},c,{blend:L.blend,opacity:L.opacity,on:true})) }
+    comp.setLayers(active)
+    if($('toOut').classList.contains('on')&&window.hvft&&window.hvft.sendComp) window.hvft.sendComp(active)
+  }
+  function opt(list,val){return list.map(([v,n])=>`<option value="${v}"${v===val?' selected':''}>${n}</option>`).join('')}
+
+  function renderGrid(){
+    const g=$('grid')
+    let html='<table><tr><th class="lhead" style="min-width:150px">LAYER</th>'
+    for(let c=0;c<COLS;c++) html+=`<th class="colhead">Klip ${c+1}</th>`
+    html+='</tr>'
+    deck.layers.forEach((L,li)=>{
+      html+='<tr>'
+      html+=`<td class="lhead">
+        <div class="nm">L${li+1}${li===0?' (depan)':''}</div>
+        <div class="row">
+          <button class="onb ${L.on!==false?'on':''}" data-li="${li}">${L.on!==false?'ON':'OFF'}</button>
+          <select class="bl" data-li="${li}">${opt(BLENDS,L.blend)}</select>
+        </div>
+        <div class="row"><input type="range" class="op" data-li="${li}" min="0" max="100" value="${Math.round((L.opacity!=null?L.opacity:1)*100)}"><button class="dlL" data-li="${li}">✕L</button></div>
+      </td>`
+      for(let ci=0;ci<COLS;ci++){
+        const c=L.clips[ci]
+        const isA=(L.active===ci); const isSel=(sel.li===li&&sel.ci===ci)
+        html+=`<td class="cell ${c?'':'empty'} ${isA?'active':''} ${isSel?'selcell':''}" data-li="${li}" data-ci="${ci}">`
+        if(c) html+=`<span class="s">${SRCLABEL[c.src]||c.src}</span><span class="e">${(EFFS.find(e=>e[0]===(c.effect||'none'))||['','—'])[1]}</span>`
+        else html+='＋'
+        html+='</td>'
+      }
+      html+='</tr>'
+    })
+    html+='</table>'
+    g.innerHTML=html
+    // events
+    g.querySelectorAll('.cell').forEach(td=>{
+      const li=+td.dataset.li, ci=+td.dataset.ci
+      td.onclick=()=>{ sel={li,ci}; const L=deck.layers[li]; if(L.clips[ci]) L.active=ci; renderGrid(); renderProps(); buildComp() }
+    })
+    g.querySelectorAll('.onb').forEach(b=>b.onclick=e=>{e.stopPropagation();const L=deck.layers[+b.dataset.li];L.on=L.on===false;renderGrid();buildComp()})
+    g.querySelectorAll('.bl').forEach(s=>s.onchange=e=>{deck.layers[+s.dataset.li].blend=s.value;buildComp()})
+    g.querySelectorAll('.op').forEach(s=>s.oninput=e=>{deck.layers[+s.dataset.li].opacity=s.value/100;buildComp()})
+    g.querySelectorAll('.dlL').forEach(b=>b.onclick=e=>{e.stopPropagation();if(deck.layers.length>1){deck.layers.splice(+b.dataset.li,1);sel.li=Math.max(0,sel.li-1);renderGrid();renderProps();buildComp()}})
+  }
+
+  function renderProps(){
+    const p=$('props'); const L=deck.layers[sel.li]; if(!L){p.innerHTML='';return}
+    let c=L.clips[sel.ci]
+    if(!c){ p.innerHTML=`<span class="hintp">Sel L${sel.li+1}·Klip ${sel.ci+1} kosong.</span> <button id="mkClip">Isi klip →</button>`
+      $('mkClip').onclick=()=>{ L.clips[sel.ci]={src:'text',effect:'none',textCfg:{str:'HVFT',size:0.16,react:1}}; L.active=sel.ci; renderGrid(); renderProps(); buildComp() }
+      return }
+    p.innerHTML=`
+      <label>L${sel.li+1}·K${sel.ci+1}</label>
+      <label>Sumber</label><select id="pSrc">${opt(SRCS,c.src)}</select>
+      <label>Efek</label><select id="pEff">${opt(EFFS,c.effect||'none')}</select>
+      ${c.src==='text'?`<input type="text" id="pTxt" placeholder="teks…" value="${(c.textCfg&&c.textCfg.str)||''}" style="min-width:160px">`:''}
+      ${c.src==='cam'?`<label>Kam#</label><input type="text" id="pCam" value="${c.camIdx||0}" style="width:44px">`:''}
+      ${(c.src==='media'||c.src==='logo')?`<span class="hintp">${c.url?c.url.split('/').pop().slice(0,26):'seret file ke preview'}</span>`:''}
+      <button id="pAct" class="${L.active===sel.ci?'on':''}">${L.active===sel.ci?'AKTIF':'Aktifkan'}</button>`
+    $('pSrc').onchange=e=>{c.src=e.target.value; if(c.src==='text'&&!c.textCfg)c.textCfg={str:'HVFT',size:0.16,react:1}; if(['pc3d','lidar','depthai'].includes(c.src)&&(!c.effect||c.effect==='none'))c.effect='pointcloud'; renderGrid();renderProps();buildComp()}
+    $('pEff').onchange=e=>{c.effect=e.target.value;renderGrid();buildComp()}
+    if($('pTxt'))$('pTxt').oninput=e=>{if(!c.textCfg)c.textCfg={size:0.16,react:1};c.textCfg.str=e.target.value;buildComp()}
+    if($('pCam'))$('pCam').oninput=e=>{c.camIdx=parseInt(e.target.value)||0;buildComp()}
+    $('pAct').onclick=()=>{L.active=sel.ci;renderGrid();renderProps();buildComp()}
+  }
+
+  $('addLayer').onclick=()=>{ deck.layers.unshift(mkLayer(COLS)); sel={li:0,ci:0}; renderGrid(); renderProps(); buildComp() }
+  $('addCol').onclick=()=>{ COLS++; deck.layers.forEach(L=>L.clips.push(null)); renderGrid() }
+  $('clearSel').onclick=()=>{ const L=deck.layers[sel.li]; if(L){ L.clips[sel.ci]=null; if(L.active===sel.ci)L.active=-1 } renderGrid(); renderProps(); buildComp() }
+  $('toOut').onclick=e=>{ e.target.classList.toggle('on'); buildComp() }
+
+  // seret file -> media/logo ke sel terpilih
+  $('prev').addEventListener('dragover',e=>e.preventDefault())
+  $('prev').addEventListener('drop',e=>{
+    e.preventDefault();const f=e.dataTransfer.files[0];if(!f)return
+    const info=window.hvft&&window.hvft.fileInfo?window.hvft.fileInfo(f):null
+    const url=info?info.url:URL.createObjectURL(f);const name=(info&&info.name)||f.name
+    const L=deck.layers[sel.li];if(!L)return; let c=L.clips[sel.ci]||(L.clips[sel.ci]={})
+    const isVid=/\.(mp4|mov|webm|m4v|mkv)$/i.test(name)
+    c.src=isVid?'media':'logo';c.url=url;c.kind=isVid?'video':'image';if(!c.effect)c.effect='none'
+    L.active=sel.ci; renderGrid(); renderProps(); buildComp()
+  })
+
+  if(window.hvft&&window.hvft.onDepthFrame) window.hvft.onDepthFrame(f=>comp.pushDepth(f))
+
+  // audio
+  let AN=null,SPEC=null,PREV=null,onset=0,bass=0
+  $('mic').onclick=async e=>{ if(AN)return
+    try{const AI=window.HVFT_AUDIO_IN;const ac=new (window.AudioContext||window.webkitAudioContext)()
+      AN=ac.createAnalyser();AN.fftSize=1024;AN.smoothingTimeConstant=0.6
+      if(AI){const o=await AI.open();AI.route(ac,o.stream,o.cfg).connect(AN)}else{const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});ac.createMediaStreamSource(st).connect(AN)}
+      SPEC=new Uint8Array(AN.frequencyBinCount);PREV=new Uint8Array(AN.frequencyBinCount);e.target.classList.add('on');e.target.textContent='Mic ON'
+    }catch(err){e.target.textContent='Mic ditolak'} }
+  function stepAudio(){ if(!AN){onset=0;bass=0;return} AN.getByteFrequencyData(SPEC);const n=SPEC.length;let flux=0,lo=0,ln=0
+    for(let i=0;i<n;i++){const df=SPEC[i]-PREV[i];if(df>0)flux+=df;if(i<n*0.12){lo+=SPEC[i];ln++}} PREV.set(SPEC)
+    onset=Math.max(onset*0.86,Math.min(1,flux/(n*22)));bass=ln?(lo/ln)/255:0 }
+  let tick=0
+  function loop(){ stepAudio();tick++;comp.setAudio([bass,0,0],onset,tick);comp.render();requestAnimationFrame(loop) }
+
+  renderGrid(); renderProps(); buildComp(); requestAnimationFrame(loop)
+  </script>
+</body>
+</html>
